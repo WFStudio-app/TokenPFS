@@ -1,0 +1,52 @@
+"""ANSI colors + startup banner for TokenPFS."""
+
+import os
+
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+CYAN = "\033[36m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+MAGENTA = "\033[35m"
+BLUE = "\033[34m"
+RED = "\033[31m"
+
+
+def _nocolor():
+    return os.environ.get("NO_COLOR") is not None or not os.isatty(1) \
+        if hasattr(os, "isatty") else False
+
+
+def c(text, color):
+    if _nocolor():
+        return text
+    return f"{color}{text}{RESET}"
+
+
+LOGO = r"""
+  _____         _   ____  ____  ____
+ |_   _|__  ___| |_|  _ \/ ___||  _ \
+   | |/ _ \/ __| __| |_) \___ \| |_) |
+   | |  __/\__ \|_|  __/ ___) |  __/
+   |_|\___||___/  |_|   |____/|_|      Local token factory on any hardware
+"""
+
+
+def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int):
+    lines = [c(LOGO, CYAN)]
+    status = c(f"Ollama {ollama_ver} ONLINE", GREEN) if ollama_ok \
+        else c("Ollama OFFLINE — run: pkg install ollama && ollama serve", RED)
+    lines.append(f"  TokenPFS v{version} | {status} | downloaded models: {n_models}")
+    lines.append(c("  Commands:", BOLD))
+    lines += [
+        "    /w [model#] [question]   ask a model (parallel OK)",
+        "    /stf [tokens_per_sec]    set generation speed cap",
+        "    /models                  catalog of 20 local models",
+        "    /dl [catalog number]     download model (Download ...? Y/n)",
+        "    /list                    downloaded models with numbers",
+        "    /status                  live generation dashboard",
+        "    /stop [job id]           stop a running job",
+        "    help / quit              this list / exit",
+    ]
+    return "\n".join(lines)
