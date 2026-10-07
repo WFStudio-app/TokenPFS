@@ -46,7 +46,8 @@ class Job:
                "done": "finished", "error": "failed", "stopped": "stopped"}[self.state]
         eta = self.eta()
         eta_s = f"{eta:.0f}s" if eta is not None else "?"
-        return (f"[{self.model}] [{act}] [{self.rate():.1f} tok/s] [ready in {eta_s}]")
+        label = f"[{self.number}] {self.model}" if self.number not in ("?", "") else self.model
+        return (f"{label} [{act}] [{self.rate():.1f} tok/s] [ready in {eta_s}]")
 
 
 class Manager:
@@ -108,8 +109,10 @@ class Manager:
                 ans = j.answer.replace("\n", " ").strip()
                 if len(ans) > 400:
                     ans = ans[:400] + "…"
-                out.append(f"> [{j.model}] - {ans} [{dur:.1f}s] [{j.tokens_out} tok]")
+                label = f"[{j.number}] {j.model}" if j.number not in ("?", "") else j.model
+                out.append(f"> {label} - {ans} [{dur:.1f}s] [{j.tokens_out} tok]")
             elif j.state == "error" and not getattr(j, "_printed", False):
                 j._printed = True
-                out.append(f"> [{j.model}] - ERROR: {j.error}")
+                label = f"[{j.number}] {j.model}" if j.number not in ("?", "") else j.model
+                out.append(f"> {label} - ERROR: {j.error}")
         return out

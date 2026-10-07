@@ -14,6 +14,7 @@ Flow:
 """
 
 import os
+import re
 import sys
 import time
 import threading
@@ -21,10 +22,13 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from tokenpfs.core.version import APP_NAME, version_string          # noqa: E402
-from tokenpfs.core.models import MODEL_CATALOG, catalog_lines, get_by_index  # noqa: E402
+from tokenpfs.core.models import (MODEL_CATALOG, catalog_lines, get_by_index,
+                                  HEAVY_THRESHOLD_GB)                # noqa: E402
 from tokenpfs.core.registry import Registry                          # noqa: E402
 from tokenpfs.core.jobs import Manager                               # noqa: E402
-from tokenpfs.modules import ollama_api                              # noqa: E402
+from tokenpfs.core import hardware                                   # noqa: E402
+from tokenpfs.modules import ollama_api                               # noqa: E402
+from tokenpfs.modules import custom_models                           # noqa: E402
 from tokenpfs.utils.colors import banner, c, GREEN, YELLOW, RED, MAGENTA, BOLD  # noqa: E402
 
 DATA_DIR = os.environ.get("TOKENPFS_HOME",
@@ -70,13 +74,30 @@ class App:
 
     # ---- commands ----
     def cmd_models(self):
-        print(c("Catalog of 20 local models:", BOLD))
+        n = len(MODEL_CATALOG)
+        heavy = sum(1 for _, s, _, _ in MODEL_CATALOG if s >= HEAVY_THRESHOLD_GB)
+        print(c(f"Catalog of {n} local models ({heavy} heavy >16 GB):", BOLD))
         for line in catalog_lines():
             print("  " + line)
 
     def confirm_download(self, name):
         ans = input(c(f"Download [{name}]? Y/n ", YELLOW)).strip().lower()
         return ans in ("", "y", "yes", "д")
+
+    def _disk_check(self, size_gb, name):
+        """Warn/confirm when model needs more SSD than available."""
+        hw = hardware.measure()
+        free = hw["disk_free_gb"]
+        need = max(size_gb * 1.2, 0.5)   # headroom for unpacking
+        if size_gb >= HEAVY_THRESHOLD_GB:
+            print(c(f"NOTE: [{name}] is a HEAVY model (>{HEAVY_THRESHOLD_GB:.0f} GB). "
+                    f"It targets servers/workstations with big SSDs.", YELLOW))
+        if free and free < need:
+            print(c(f"WARNING: only {free:.1f} GB free on disk, ~{need:.1f} GB needed.", RED))
+            ans = input(c("Download anyway? y/N ", YELLOW)).strip().lower()
+            if ans not in ("y", "yes"):
+                return False
+        return True
 
     def download(self, idx_or_name):
         name = None
@@ -89,6 +110,9 @@ class App:
                     name, size = n, s
         if not name:
             print(c("Unknown model or catalog number.", RED))
+            return
+        if not self._disk_check(size, name):
+            print(c("Cancelled.", YELLOW))
             return
         if not self.confirm_download(name):
             print(c("Cancelled.", YELLOW))
@@ -113,19 +137,35 @@ class App:
         num = self.reg.add(name, size)
         print(c(f"Model ready: [{num}] {name}", GREEN))
 
+    def _resolve_model(self, key):
+        """Resolve model by registry number, exact name, or unique catalog name."""
+        num, entry = self.reg.find(key)
+        if entry:
+            return num, entry["name"]
+        # not in registry: try catalog (user may ask a catalog model directly)
+        matches = [(n, s) for n, s, _, _ in MODEL_CATALOG if n == key]
+        if not matches:
+            matches = [(n, s) for n, s, _, _ in MODEL_CATALOG if n.startswith(key)]
+        if len(matches) == 1:
+            return "?", matches[0][0]
+        if len(matches) > 1:
+            print(c(f"Ambiguous model '{key}': {', '.join(n for n, _ in matches[:5])}...", YELLOW))
+            return None, None
+        print(c(f"Unknown model: {key}. Download it with /dl <number> "
+                f"(see /models) or use its exact name.", RED))
+        return None, None
+
     def ask(self, rest):
         parts = rest.split(maxsplit=1)
         if len(parts) < 2:
             print(c("Usage: /w [model number or name] [question]", YELLOW))
             return
         key, question = parts
-        num, entry = self.reg.find(key)
-        if not entry:
-            # allow asking by catalog name even if not downloaded (demo/offline)
-            entry = {"name": key}
-            num = "?"
-        job = self.mgr.submit(num, entry["name"], question, self.tps)
-        print(c(f"Job #{job.id} started → [{num}] {entry['name']} "
+        num, model_name = self._resolve_model(key)
+        if not model_name:
+            return
+        job = self.mgr.submit(num, model_name, question, self.tps)
+        print(c(f"Job #{job.id} started → [{num}] {model_name} "
                 f"@ {self.tps:.1f} tok/s", GREEN))
 
     def dashboard(self):
@@ -136,6 +176,150 @@ class App:
         print(c("Live generation:", BOLD))
         for j in active:
             print(f"  Text — {j.status_line()}")
+
+    # ---- /autt : hardware power measurement + auto token tuning ----
+    def cmd_autt(self, arg=""):
+        hw = hardware.measure()
+        temp = f"{hw['temp_c']:.0f} C" if hw["temp_c"] is not None else "n/a"
+        print(c("Hardware power measurement:", BOLD))
+        print(f"   CPU cores      : {hw['cores']}")
+        print(f"   Load (1 min)   : {hw['load1']:.2f}")
+        print(f"   RAM free       : {hw['ram_avail_mb']} MB / {hw['ram_total_mb']} MB")
+        print(f"   SSD/HDD free   : {hw['disk_free_gb']} GB")
+        print(f"   SoC temp       : {temp}")
+        score = hw["power_score"]
+        grade = ("weak phone" if score < 25 else
+                 "phone / SBC" if score < 45 else
+                 "laptop" if score < 70 else "server / workstation")
+        print(f"   POWER SCORE    : {score}/100  -> class: {grade}")
+        # pick model to tune for
+        name = size = None
+        if arg:
+            num, entry = self.reg.find(arg)
+            if entry:
+                name, size = entry["name"], entry.get("size_gb", 1.0)
+            else:
+                for n_, s_, _, _ in MODEL_CATALOG:
+                    if n_ == arg or str(MODEL_CATALOG.index((n_, s_, _, _)) + 1) == arg:
+                        name, size = n_, s_
+        if not name:
+            items = self.reg.all()
+            if items:
+                last = sorted(items)[-1]
+                name, size = items[last]["name"], items[last].get("size_gb", 1.0)
+                print(c(f"No model given — using latest downloaded [{last}] {name}", YELLOW))
+            else:
+                name, size = "qwen2.5:0.5b", 0.4
+                print(c("No models downloaded — showing recommendation for lightest catalog model.", YELLOW))
+        tps = hardware.recommend_tps(size, hw)
+        heavy_tag = " [HEAVY >16GB]" if size >= HEAVY_THRESHOLD_GB else ""
+        print(c(f"Recommended for [{name}] (~{size} GB){heavy_tag}: "
+                f"/stf {tps} tokens/sec", GREEN))
+        ans = input(c("Apply this speed now? Y/n ", YELLOW)).strip().lower()
+        if ans in ("", "y", "yes"):
+            self.tps = tps
+            print(c(f"Applied: generation speed = {tps} tok/s", GREEN))
+
+    # ---- custom models: /dnm (GitHub), /dnmf (local file), /delm ----
+    def cmd_dnm(self, url):
+        if not url:
+            print(c("Usage: /dnm [github link to .gguf/Modelfile or repo URL]", YELLOW))
+            return
+        norm = custom_models.normalize_github_url(url)
+        m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+)/?$", norm)
+        if m:  # plain repo -> scan README for links
+            owner, repo = m.groups()
+            print(c(f"Scanning README of {owner}/{repo} for model files...", YELLOW))
+            links = custom_models.scan_repo_readme(owner, repo)
+            if not links:
+                print(c("No .gguf/.bin/HF links found in README. "
+                        "Link the file directly: /dnm <raw-url-to-file>", RED))
+                return
+            print(c("Found model links:", BOLD))
+            for i, ln in enumerate(links, 1):
+                print(f"  {i}. {ln}")
+            sel = input(c(f"Download which number? (1-{len(links)}) ", YELLOW)).strip()
+            if not sel.isdigit() or not (1 <= int(sel) <= len(links)):
+                print(c("Cancelled.", YELLOW))
+                return
+            norm = links[int(sel) - 1]
+        name = custom_models.name_from_url(norm)
+        if not self.confirm_download(name):
+            print(c("Cancelled.", YELLOW))
+            return
+        try:
+            dest_dir = os.path.join(DATA_DIR, "custom")
+            path = custom_models.fetch_file_to(norm, dest_dir)
+        except Exception as e:
+            print(c(f"Fetch failed: {e}", RED))
+            return
+        size = custom_models.size_gb(path)
+        ok_ollama = False
+        if path.endswith(".gguf") and self.ok:
+            mf = os.path.join(DATA_DIR, "custom", f"Modelfile.{name.replace('/', '_').replace(':', '_')}")
+            with open(mf, "w") as f:
+                f.write(custom_models.make_modelfile(path))
+            ok_ollama = custom_models.register_with_ollama(mf, name)
+            print(c("Registered in Ollama." if ok_ollama
+                    else "Ollama create failed — registry-only mode.", YELLOW))
+        elif not self.ok:
+            print(c("Ollama offline — registered in TokenPFS registry only (demo).", YELLOW))
+        num = self.reg.add(name, size)
+        print(c(f"Custom model ready: [{num}] {name} ({size} GB, source: GitHub)", GREEN))
+
+    def cmd_dnmf(self, path):
+        if not path:
+            print(c("Usage: /dnmf [path to .gguf or Modelfile on device]", YELLOW))
+            return
+        path = os.path.expanduser(path.strip())
+        if not os.path.exists(path):
+            print(c(f"File not found: {path}", RED))
+            return
+        base = os.path.basename(path)
+        name = f"custom/{re.sub(r'\\.gguf$', '', base, flags=re.I).lower()}:latest"
+        if not self.confirm_download(name):
+            print(c("Cancelled.", YELLOW))
+            return
+        size = custom_models.size_gb(path)
+        if not self._disk_check(0, name):
+            return
+        ok_ollama = False
+        if self.ok:
+            if path.endswith(".gguf"):
+                mf = os.path.join(DATA_DIR, "custom", f"Modelfile.{name.replace('/', '_').replace(':', '_')}")
+                os.makedirs(os.path.dirname(mf), exist_ok=True)
+                with open(mf, "w") as f:
+                    f.write(custom_models.make_modelfile(path))
+                ok_ollama = custom_models.register_with_ollama(mf, name)
+            elif base.lower().startswith("modelfile"):
+                ok_ollama = custom_models.register_with_ollama(path, name)
+            print(c("Registered in Ollama." if ok_ollama
+                    else "Ollama create failed — registry-only mode.", YELLOW))
+        else:
+            print(c("Ollama offline — registered in TokenPFS registry only (demo).", YELLOW))
+        num = self.reg.add(name, size)
+        print(c(f"Local model ready: [{num}] {name} ({size} GB, source: local file)", GREEN))
+
+    def cmd_delm(self, key):
+        if not key:
+            print(c("Usage: /delm [model name or number]", YELLOW))
+            return
+        num, entry = self.reg.remove(key)
+        if not num:
+            print(c(f"Model not found: {key}", RED))
+            return
+        # try removing from ollama too
+        removed_ollama = ""
+        if self.ok:
+            import subprocess
+            try:
+                r = subprocess.run(["ollama", "rm", entry["name"]],
+                                   capture_output=True, text=True, timeout=60)
+                if r.returncode == 0:
+                    removed_ollama = " (+ deleted from Ollama storage)"
+            except Exception:
+                pass
+        print(c(f"Deleted [{num}] {entry['name']}{removed_ollama}", GREEN))
 
     def status_loop(self, stop_event):
         last_print = 0.0
@@ -176,9 +360,19 @@ class App:
                 break
             elif low == "help":
                 print("/models | /dl <n> | /list | /w <model> <text> | "
-                      "/stf <tps> | /status | /stop <job id> | quit")
+                      "/stf <tps> | /autt [model] | /dnm <github-url> | "
+                      "/dnmf <path> | /delm <name/#> | /status | "
+                      "/stop <job id> | quit")
             elif low == "/models":
                 self.cmd_models()
+            elif low.startswith("/dnmf"):
+                self.cmd_dnmf(line[5:].strip())
+            elif low.startswith("/dnm"):
+                self.cmd_dnm(line[4:].strip())
+            elif low.startswith("/delm"):
+                self.cmd_delm(line[5:].strip())
+            elif low.startswith("/autt"):
+                self.cmd_autt(line[5:].strip())
             elif low.startswith("/dl"):
                 arg = line[3:].strip()
                 if arg:

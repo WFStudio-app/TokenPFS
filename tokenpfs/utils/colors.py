@@ -34,6 +34,8 @@ LOGO = r"""
 
 
 def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int):
+    from tokenpfs.core.models import MODEL_CATALOG
+    n = len(MODEL_CATALOG)
     lines = [c(LOGO, CYAN)]
     status = c(f"Ollama {ollama_ver} ONLINE", GREEN) if ollama_ok \
         else c("Ollama OFFLINE — run: pkg install ollama && ollama serve", RED)
@@ -42,8 +44,12 @@ def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int):
     lines += [
         "    /w [model#] [question]   ask a model (parallel OK)",
         "    /stf [tokens_per_sec]    set generation speed cap",
-        "    /models                  catalog of 20 local models",
+        "    /autt [model]            measure hardware power & auto-tune tok/s",
+        f"    /models                  catalog of {n} local models (heavy >16 GB tagged)",
         "    /dl [catalog number]     download model (Download ...? Y/n)",
+        "    /dnm [github url]        load custom model from GitHub (.gguf/Modelfile/repo)",
+        "    /dnmf [local path]       load custom model from device file",
+        "    /delm [name or number]   delete a downloaded model",
         "    /list                    downloaded models with numbers",
         "    /status                  live generation dashboard",
         "    /stop [job id]           stop a running job",

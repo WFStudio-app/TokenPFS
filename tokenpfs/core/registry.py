@@ -41,13 +41,25 @@ class Registry:
     def find(self, key: str):
         """Accept '07', '7', or model name; return (number, entry) or (None, None)."""
         key = key.strip()
-        with _LOCK:
+        with _LOCK:   # non-reentrant lock: callers must NOT hold it
             if key.zfill(2) in self.items:
                 n = key.zfill(2)
                 return n, self.items[n]
             for n, e in self.items.items():
                 if e["name"] == key:
                     return n, e
+        return None, None
+
+    def remove(self, key: str):
+        """Delete model by number ('07'/'7') or exact name. Returns (num, entry) or (None, None)."""
+        num, entry = self.find(key)   # find() takes the lock itself
+        if not num:
+            return None, None
+        with _LOCK:
+            if num in self.items:
+                del self.items[num]
+                self.save()
+                return num, entry
         return None, None
 
     def all(self):
