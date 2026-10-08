@@ -24,7 +24,17 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 
 ---
 
-## 🚀 Quick start (Termux)
+## ⚡ One-click install (recommended)
+
+Auto-installer for **Linux, Termux and macOS**: detects your package manager, installs Python/Git/Ollama, clones the repo and creates a `tokenpfs` command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.sh | bash
+# then open a new terminal and run:
+tokenpfs
+```
+
+## 🚀 Manual quick start (Termux)
 
 ```bash
 pkg update && pkg upgrade
