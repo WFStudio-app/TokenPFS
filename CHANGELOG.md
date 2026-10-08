@@ -2,6 +2,13 @@
 
 Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 
+## v2.0.0-alpha — Global update (cross-platform support)
+- **Windows support**: new PowerShell installer `scripts/install.ps1` (winget for Python/Git, official OllamaSetup.exe silent install, `%USERPROFILE%\.tokenpfs\TokenPFS`, `tokenpfs.cmd` launcher + PATH).
+- **macOS hardening**: Intel/Apple Silicon memory & temperature probing via sysctl/vm_stat/powermetrics; Homebrew path in installer.
+- **VPS/cloud support**: `install.sh` now runs headless over SSH as root (no sudo required), added yum/apk package managers, virtualization/VPS auto-detection (`systemd-detect-virt`, DMI product name, hypervisor cpu flag); `/autt` prints Platform + VPS class.
+- Cross-platform `/autt`: RAM measurement via ctypes GlobalMemoryStatusEx (Win), sysctl+vm_stat (macOS), psutil fallback everywhere.
+- Versioning: alpha suffix support (`2.0.0-alpha`).
+
 ## v1.1.1 — Mini update (bugfix, found by real testing)
 - Fixed `/w <number>` answering with the model's *name* instead of resolving registry number → now resolves `[NN]` numbers strictly and falls back to exact/unique catalog name; unknown or ambiguous names produce a clear error instead of silently asking a fake model.
 - Fixed double brackets in answer line `> [[01] model]` → correct format `> [01] model - answer [time] [tokens]`.

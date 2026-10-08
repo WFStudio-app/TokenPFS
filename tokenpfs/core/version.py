@@ -6,15 +6,16 @@ Versioning algorithm (X.X.X / SemVer):
   0.0.X -> Mini update   (small fixes / tweaks)
 """
 
-VERSION_MAJOR = 1
-VERSION_MINOR = 1
-VERSION_PATCH = 2
+VERSION_MAJOR = 2
+VERSION_MINOR = 0
+VERSION_PATCH = 0
+VERSION_SUFFIX = "-alpha"
 
 APP_NAME = "TokenPFS"
 
 
 def version_string() -> str:
-    return f"{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"
+    return f"{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}{VERSION_SUFFIX}"
 
 
 def bump(kind: str) -> str:

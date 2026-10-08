@@ -182,6 +182,11 @@ class App:
         hw = hardware.measure()
         temp = f"{hw['temp_c']:.0f} C" if hw["temp_c"] is not None else "n/a"
         print(c("Hardware power measurement:", BOLD))
+        plat = f"{hw.get('os', '?')} {hw.get('os_release', '')} ({hw.get('arch', '?')})"
+        vps = hw.get("vps")
+        if vps:
+            plat += f" — virtualized/VPS: {vps}"
+        print(f"   Platform       : {plat}")
         print(f"   CPU cores      : {hw['cores']}")
         print(f"   Load (1 min)   : {hw['load1']:.2f}")
         print(f"   RAM free       : {hw['ram_avail_mb']} MB / {hw['ram_total_mb']} MB")

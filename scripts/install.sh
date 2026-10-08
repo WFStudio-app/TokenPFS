@@ -2,7 +2,9 @@
 # ============================================================
 #  TokenPFS — one-click auto installer
 #  Usage: curl -fsSL https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.sh | bash
-#  Supports: Linux (apt/dnf/pacman/zypper), Termux (Android), macOS (Homebrew)
+#  Supports: Linux (apt/dnf/pacman/zypper), Termux (Android), macOS (Homebrew),
+#            VPS/cloud servers over SSH (headless, no desktop needed)
+#  Windows users: use scripts/install.ps1 instead (PowerShell).
 # ============================================================
 set -e
 
@@ -19,7 +21,20 @@ fail()  { printf "\033[1;31m[ERROR]\033[0m %s\n" "$*"; exit 1; }
 IS_TERMUX=false
 [ -n "$PREFIX" ] && case "$PREFIX" in *com.termux*) IS_TERMUX=true ;; esac
 OS="$(uname -s)"
-say "Platform: $OS$( [ "$IS_TERMUX" = true ] && echo ' (Termux)' )"
+
+# SUDO handling: root on VPS/minimal images has no sudo binary
+SUDO=""
+if [ "$(id -u)" != "0" ]; then
+    if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; else
+        fail "Not root and sudo not found — run as root (typical on VPS: ssh root@server)."
+    fi
+fi
+
+# VPS / headless detection (informational)
+IS_VPS=false
+{ [ -f /.dockerenv ] || [ -f /run/systemd/container ] || \
+  grep -qi 'hypervisor' /proc/cpuinfo 2>/dev/null; } && IS_VPS=true
+say "Platform: $OS$( [ "$IS_TERMUX" = true ] && echo ' (Termux)' )$( [ "$IS_VPS" = true ] && echo ' (virtualized/VPS — headless OK)' )"
 
 # ---------- install dependencies ----------
 if [ "$IS_TERMUX" = true ]; then
@@ -27,13 +42,17 @@ if [ "$IS_TERMUX" = true ]; then
     pkg update -y >/dev/null
     pkg install -y python git curl tar ollama >/dev/null || warn "ollama pkg failed — will use DEMO mode"
 elif command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -y >/dev/null && sudo apt-get install -y python3 git curl >/dev/null
+    $SUDO apt-get update -y >/dev/null && $SUDO apt-get install -y python3 git curl >/dev/null
 elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y python3 git curl >/dev/null
+    $SUDO dnf install -y python3 git curl >/dev/null
+elif command -v yum >/dev/null 2>&1; then
+    $SUDO yum install -y python3 git curl >/dev/null
 elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -S --noconfirm python git curl >/dev/null
+    $SUDO pacman -S --noconfirm python git curl >/dev/null
 elif command -v zypper >/dev/null 2>&1; then
-    sudo zypper -n install python3 git curl >/dev/null
+    $SUDO zypper -n install python3 git curl >/dev/null
+elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache python3 git curl >/dev/null
 elif [ "$OS" = "Darwin" ]; then
     command -v brew >/dev/null 2>&1 || fail "Install Homebrew first: https://brew.sh"
     brew list python &>/dev/null || brew install python

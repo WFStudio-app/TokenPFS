@@ -26,13 +26,23 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 
 ## ⚡ One-click install (recommended)
 
-Auto-installer for **Linux, Termux and macOS**: detects your package manager, installs Python/Git/Ollama, clones the repo and creates a `tokenpfs` command:
+Auto-installer for **Linux, Termux, macOS and VPS/cloud servers** (headless over SSH): detects your package manager (apt/dnf/yum/pacman/zypper/apk), installs Python/Git/Ollama, clones the repo and creates a `tokenpfs` command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.sh | bash
 # then open a new terminal and run:
 tokenpfs
 ```
+
+**Windows 10/11** — in PowerShell:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.ps1 | iex
+# reopen the terminal and run:
+tokenpfs
+```
+
+**VPS / cloud server** — same Linux one-liner works over SSH as root (`ssh root@your-vps` → paste command). `/autt` inside TokenPFS shows detected platform and virtualization class.
 
 ## 🚀 Manual quick start (Termux)
 
