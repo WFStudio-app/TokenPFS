@@ -49,9 +49,41 @@ MODEL_CATALOG = [
     ("solar:10.7b",         6.8, "Solar",      "Upcycled mid-size"),
     ("magistral:24b",      14.6, "Magistral",  "Reasoning MoE mid-heavy"),
     ("devstral:24b",       14.6, "Devstral",   "Agentic coding mid-heavy"),
+    # ---- new light/mid additions (v2.1) ----
+    ("qwen3:0.6b",          0.5, "Qwen3",      "Newest tiny reasoning"),
+    ("qwen3:4b",            2.5, "Qwen3",      "Hybrid thinking small"),
+    ("qwen3:8b",            5.2, "Qwen3",      "Hybrid thinking 8B"),
+    ("gemma3n:e2b",         2.8, "Gemma3n",    "MatFormer edge model"),
+    ("granite4:micro",      3.0, "Granite",    "IBM compact function-calling"),
+    ("minimax-m2:cloudless",7.9, "MiniMax",    "MoE coding, fits 8GB RAM"),
+    ("ernie4.5:0.3b",       0.4, "ERNIE",      "Baidu ultra-tiny multilingual"),
+    ("lfm2:1.2b",           0.7, "LFM2",       "Liquid AI, phone-friendly"),
+    ("nemotron-mini:4b",    2.6, "Nemotron",   "NVIDIA safety-tuned small"),
+    ("exaone4:7.8b",        4.9, "Exaone",     "LG recent multilingual"),
+    # ---- giant class (>=25 GB SSD) ----
+    ("llama3.3:70b",       40.0, "Llama3.3",   "Best-70B chat, server GPU"),
+    ("qwen2.5:72b",        39.0, "Qwen",       "Flagship dense Qwen"),
+    ("qwen3:235b-a22b",   128.0, "Qwen3 MoE",  "Frontier MoE, multi-GPU rig"),
+    ("deepseek-r1:70b",    40.0, "DeepSeek",   "Long CoT reasoning giant"),
+    ("deepseek-v3:671b",  365.0, "DeepSeek",   "Full-size frontier MoE"),
+    ("llama4:scout:17b",   25.0, "Llama4",     "Vision MoE entry"),
+    ("gpt-oss:120b",       61.0, "OpenAI OSS", "Open-weight reasoning giant"),
+    ("mistral-small:24b",  14.5, "Mistral",    "Compact tool-use"),
+    ("phi4-reasoning:14b", 9.1, "Phi4",        "Microsoft reasoning mid"),
+    ("command-r-plus",     61.0, "Cohere",     "RAG enterprise giant"),
+    ("glm-4:32b",          18.0, "GLM",        "Zhipu agentic heavy"),
+    ("yi-coder:9b",         5.2, "Yi",         "Light coding specialist"),
+    ("codegeex4:9b",        5.5, "CodeGeeX",   "Multilingual coder"),
+    ("internlm3:8b",        4.7, "InternLM",   "Recent mid coder"),
+    ("aquila2:70b",        34.0, "Aquila2",    "BAAI legacy giant"),
+    ("falcon3:10b",         6.5, "Falcon3",    "TII mid-size"),
+    ("aya-expanse:32b",    18.5, "Aya",        "Cohere multilingual giant"),
+    ("kimi-k2:1t",        594.0, "Kimi",       "Trillion-param MoE, datacenter"),
+    ("llama3.1:405b",     231.0, "Llama3.1",   "Dense 405B, cluster class"),
 ]
 
-HEAVY_THRESHOLD_GB = 16.0  # models above this need >16 GB free SSD
+HEAVY_THRESHOLD_GB = 16.0   # models above this need >16 GB free SSD
+GIANT_THRESHOLD_GB = 25.0   # /bmc catalog: 25 GB+ giants
 
 
 def catalog_lines() -> list:
@@ -67,3 +99,15 @@ def get_by_index(idx: int):
     if 1 <= idx <= len(MODEL_CATALOG):
         return MODEL_CATALOG[idx - 1][0]
     return None
+
+
+def giant_catalog_lines() -> list:
+    """/bmc — Big Model Catalog: only models that need >=25 GB free SSD."""
+    out = []
+    giants = [(n, s, f, note) for (n, s, f, note) in MODEL_CATALOG
+              if s >= GIANT_THRESHOLD_GB]
+    giants.sort(key=lambda m: m[1])  # lightest giant first
+    for i, (name, size, fam, note) in enumerate(giants, 1):
+        cls = "datacenter" if size >= 200 else ("multi-GPU server" if size >= 60 else "single server GPU")
+        out.append(f"{i:>2}. {name:<24} ~{size:>5.1f} GB  [{fam}]  {note}  ({cls})")
+    return out

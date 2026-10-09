@@ -12,7 +12,7 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 
 | Feature | Description |
 |---|---|
-| 🧠 **42 local models** | Curated catalog of small/medium LLMs (Llama, Qwen, Phi, Gemma, DeepSeek…) sized 0.4–4.7 GB |
+| 🧠 **71 local models** | Small → frontier class (Llama, Qwen, Phi, Gemma, DeepSeek…), 0.4 GB … 594 GB; `/bmc` shows 25 GB+ giants |
 | 🔢 **Model numbering** | Every downloaded model gets a number right after install: `[01]`, `[02]`, … |
 | ⚙️ **Ollama engine** | Real inference through the Ollama HTTP API (`ollama serve`) — or remote host via `TOKENPFS_OLLAMA_URL` |
 | 🪟 **Download confirm** | `Download [model]? Y/n` + live progress bar while pulling weights |
@@ -120,7 +120,7 @@ TokenPFS/
 └── tokenpfs/
     ├── core/
     │   ├── version.py        # X.X.X versioning algorithm + bump()
-    │   ├── models.py         # catalog of 42 local models
+    │   ├── models.py         # catalog of 71 local models (incl. 25 GB+ giants)
     │   ├── registry.py       # [01],[02]... numbering after download
     │   └── jobs.py           # parallel generation manager + status lines
     ├── modules/
@@ -166,7 +166,7 @@ TokenPFS/
 MIT — see [LICENSE](LICENSE).
 
 ## v1.1.0 additions
-- **42-model catalog** — now includes heavy class (>16 GB SSD): `llama3.1:70b`, `mixtral:8x22b`, `mistral-large`, `qwen2.5:32b`, `deepseek-r1:32b` and more, tagged `[HEAVY >16GB]` with automatic disk-space check before download.
+- **71-model catalog** (was 42; see v2.1.1 for the giant class + /bmc) — now includes heavy class (>16 GB SSD): `llama3.1:70b`, `mixtral:8x22b`, `mistral-large`, `qwen2.5:32b`, `deepseek-r1:32b` and more, tagged `[HEAVY >16GB]` with automatic disk-space check before download.
 - **`/autt [model]`** — measures hardware power (CPU cores, load, RAM, SSD, SoC temp → POWER SCORE 0–100) and auto-recommends `/stf` tokens-per-second tuned to your device.
 - **`/dnm <github-url>`** — load custom models from GitHub: direct `.gguf`/Modelfile raw link, blob link (auto-converted), or a plain repo URL (README is scanned for model links). Registered in Ollama when online, numbered `[NN]` right after.
 - **`/dnmf <path>`** — load your own local `.gguf` / Modelfile from the device.

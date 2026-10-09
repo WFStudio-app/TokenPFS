@@ -46,6 +46,7 @@ def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int):
         "    /stf [tokens_per_sec]    set generation speed cap",
         "    /autt [model]            measure hardware power & auto-tune tok/s",
         f"    /models                  catalog of {n} local models (heavy >16 GB tagged)",
+        "    /bmc                     BIG MODEL CATALOG: 25 GB+ giants (llama3.3:70b ... kimi-k2:1t)",
         "    /dl [catalog number]     download model (Download ...? Y/n)",
         "    /dnm [github url]        load custom model from GitHub (.gguf/Modelfile/repo)",
         "    /dnmf [local path]       load custom model from device file",

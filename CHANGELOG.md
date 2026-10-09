@@ -1,4 +1,11 @@
-# Changelog — TokenPFS
+### [2.1.1-alpha] — 2026-10-10 (Unreleased)
+
+### Added
+- **Catalog expanded 42 → 71 models**: new light/mid class (qwen3:0.6b/4b/8b, gemma3n:e2b, granite4:micro, minimax-m2:cloudless, ernie4.5:0.3b, lfm2:1.2b, nemotron-mini:4b, exaone4:7.8b) and giant class (llama3.3:70b, qwen2.5:72b, deepseek-r1:70b, gpt-oss:120b, command-r-plus, llama3.1:405b, deepseek-v3:671b, kimi-k2:1t…).
+- **`/bmc` — Big Model Catalog**: only models needing ≥25 GB free SSD, sorted by size with hardware-class tags (single server GPU / multi-GPU server / datacenter). Magenta output, tip to check disk via `/autt`.
+- `/models` header now advertises `/bmc`; `help` lists `/bmc`; banner shows the new command.
+
+ Changelog — TokenPFS
 
 Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 

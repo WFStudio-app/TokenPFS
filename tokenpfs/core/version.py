@@ -7,8 +7,8 @@ Versioning algorithm (X.X.X / SemVer):
 """
 
 VERSION_MAJOR = 2
-VERSION_MINOR = 0
-VERSION_PATCH = 0
+VERSION_MINOR = 1
+VERSION_PATCH = 1
 VERSION_SUFFIX = "-alpha"
 
 APP_NAME = "TokenPFS"

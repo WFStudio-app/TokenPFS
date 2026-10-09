@@ -63,7 +63,7 @@ class Manager:
         self._next_id = 1
 
     def submit(self, number, model, question, tps, prompt_full=None,
-               chat=None) -> Job:
+               chat=None, user_turn_added=False) -> Job:
         with self._lock:
             jid = self._next_id
             self._next_id += 1
@@ -72,8 +72,10 @@ class Manager:
         job = Job(jid, number, model, question, tps, self.runner,
                   prompt_full=prompt_full, chat=chat)
         # register the user turn BEFORE launching the thread so a second
-        # /w to the same model can never read a half-written history
-        if chat is not None and number not in ("?", ""):
+        # /w to the same model can never read a half-written history.
+        # If the caller already built the prompt from the history *including*
+        # this turn (chat.build_prompt + add), skip to avoid double insertion.
+        if chat is not None and number not in ("?", "") and not user_turn_added:
             chat.add(number, "user", question)
         with self._lock:
             self.jobs.append(job)
@@ -91,8 +93,12 @@ class Manager:
                 job.tokens_out += 1
 
         try:
-            res = self.runner(job.model, job.prompt_full, job.tps,
-                              on_token, job.stop_flag)
+            try:
+                res = self.runner(job.model, job.prompt_full, job.tps,
+                                  on_token, job.stop_flag, job.number)
+            except TypeError:      # legacy 5-arg runners (tests)
+                res = self.runner(job.model, job.prompt_full, job.tps,
+                                  on_token, job.stop_flag)
             # runner may return (text, ntok, elapsed) or (..., stats)
             if len(res) == 4:
                 text, ntok, elapsed, stats = res

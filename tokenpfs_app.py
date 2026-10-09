@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from tokenpfs.core.version import APP_NAME, version_string          # noqa: E402
 from tokenpfs.core.models import (MODEL_CATALOG, catalog_lines, get_by_index,
-                                  HEAVY_THRESHOLD_GB)                # noqa: E402
+                                  giant_catalog_lines, HEAVY_THRESHOLD_GB)  # noqa: E402
+
 from tokenpfs.core.registry import Registry                          # noqa: E402
 from tokenpfs.core.jobs import Manager                               # noqa: E402
 from tokenpfs.core.chatml import ChatStore                           # noqa: E402
@@ -45,25 +46,35 @@ class App:
         self.mgr = Manager(self._runner)
         self.chat = ChatStore(os.path.join(DATA_DIR, "chat.json"))
         self.opts = GenOptions()
+        self.opt_model = None   # model targeted by /opt
         self.ok = ollama_api.is_alive()
         self.ver = ollama_api.server_version()
 
     # ---- ollama runner with graceful fallback (demo mode if offline) ----
-    def _runner(self, model, prompt, tps, on_token, stop_flag):
+    def _runner(self, model, prompt, tps, on_token, stop_flag, number=None):
         if not self.ok:
-            return self._demo_runner(model, prompt, tps, on_token, stop_flag)
+            return self._demo_runner(model, prompt, tps, on_token,
+                                     stop_flag, number)
         try:
             return ollama_api.generate_stream(model, prompt, tps,
                                               on_token, stop_flag,
-                                              options=self.opts.payload_options())
+                                              options=self.opts.payload_options(number))
         except Exception as e:
             raise RuntimeError(f"ollama error: {e}")
 
     @staticmethod
-    def _demo_runner(model, prompt, tps, on_token, stop_flag):
+    def _demo_runner(model, prompt, tps, on_token, stop_flag, number=None):
         """Offline demo so the UX is testable without Ollama installed."""
+        # show only the last user turn, not the raw ChatML context blob
+        last_user = prompt
+        if "<|im_start|>" in prompt:
+            chunks = [c for c in prompt.split("<|im_start|>")
+                      if c.startswith("user")]
+            if chunks:
+                last_user = chunks[-1].split("<|im_end|>")[0]
+                last_user = last_user.split("\n", 1)[-1]
         text = (f"[DEMO MODE — Ollama offline] I am {model}. You asked: "
-                f"{prompt!r}. Install & start Ollama (pkg install ollama; "
+                f"{last_user!r}. Install & start Ollama (pkg install ollama; "
                 f"ollama serve) to get real answers generated locally.")
         start = time.time()
         words = text.split(" ")
@@ -83,9 +94,20 @@ class App:
     def cmd_models(self):
         n = len(MODEL_CATALOG)
         heavy = sum(1 for _, s, _, _ in MODEL_CATALOG if s >= HEAVY_THRESHOLD_GB)
-        print(c(f"Catalog of {n} local models ({heavy} heavy >16 GB):", BOLD))
+        print(c(f"Catalog of {n} local models ({heavy} heavy >16 GB; "
+                f"use /bmc for 25 GB+ giants):", BOLD))
         for line in catalog_lines():
             print("  " + line)
+
+    def cmd_bmc(self):
+        """/bmc — Big Model Catalog: 25 GB+ giants only."""
+        lines = giant_catalog_lines()
+        print(c(f"BIG MODEL CATALOG (/bmc) — {len(lines)} models needing "
+                f">=25 GB free SSD:", BOLD))
+        for line in lines:
+            print("  " + c(line, MAGENTA))
+        print(c("Tip: /dl <catalog number from /models> to download any of them. "
+                "Check your disk first with /autt.", YELLOW))
 
     def confirm_download(self, name):
         ans = input(c(f"Download [{name}]? Y/n ", YELLOW)).strip().lower()
@@ -144,7 +166,7 @@ class App:
         num = self.reg.add(name, size)
         print(c(f"Model ready: [{num}] {name}", GREEN))
 
-    def _resolve_model(self, key):
+    def _resolve_model(self, key, quiet=False):
         """Resolve model by registry number, exact name, or unique catalog name."""
         num, entry = self.reg.find(key)
         if entry:
@@ -156,10 +178,12 @@ class App:
         if len(matches) == 1:
             return "?", matches[0][0]
         if len(matches) > 1:
-            print(c(f"Ambiguous model '{key}': {', '.join(n for n, _ in matches[:5])}...", YELLOW))
+            if not quiet:
+                print(c(f"Ambiguous model '{key}': {', '.join(n for n, _ in matches[:5])}...", YELLOW))
             return None, None
-        print(c(f"Unknown model: {key}. Download it with /dl <number> "
-                f"(see /models) or use its exact name.", RED))
+        if not quiet:
+            print(c(f"Unknown model: {key}. Download it with /dl <number> "
+                    f"(see /models) or use its exact name.", RED))
         return None, None
 
     def ask(self, rest):
@@ -171,11 +195,14 @@ class App:
         num, model_name = self._resolve_model(key)
         if not model_name:
             return
-        # chat mode: build prompt with full dialog context (system + history)
+        # chat mode: build prompt with full dialog context (system + history),
+        # then register the user turn once (no double insert into history)
         prompt = self.chat.build_prompt(num, question)
+        self.chat.add(num, "user", question)
         job = self.mgr.submit(num, model_name, question, self.tps,
-                              prompt_full=prompt, chat=self.chat)
-        hist = len(self.chat.history(num)) - 1   # user turn added by submit()
+                              prompt_full=prompt, chat=self.chat,
+                              user_turn_added=True)
+        hist = len(self.chat.history(num)) - 1   # exclude just-added user turn
         print(c(f"Job #{job.id} started → [{num}] {model_name} "
                 f"@ cap {self.tps:.1f} tok/s (chat history: {hist} msg)", GREEN))
 
@@ -199,18 +226,38 @@ class App:
         print(c(f"System prompt set for {scope}: {text!r}", GREEN))
 
     def cmd_opt(self, rest):
-        """/opt [key value] — generation settings (temperature, top_p...)."""
-        parts = rest.split(maxsplit=1)
-        if not parts:
-            print(c("Generation options: " + self.opts.summary(), BOLD))
-            print(c("Usage: /opt temperature 0.7 | top_p 0.9 | max_tokens 512 "
-                    "| num_ctx 2048 | seed -1", YELLOW))
+        """/opt [model] [key value | key | unset key] — generation settings."""
+        parts = rest.split()
+        target = None
+        if parts:
+            num, name = self._resolve_model(parts[0], quiet=True)
+            # only consume the first token as a model ref when a real
+            # key/value follows it (>= 2 remaining tokens)
+            if name and len(parts) >= 3:
+                target = str(num)
+                parts = parts[1:]
+        if not parts:                     # bare /opt -> show effective summary
+            scope = f" for model [{target}]" if target else " (session default)"
+            print(c("Generation options" + scope + ": " + self.opts.summary(target), BOLD))
+            print(c("Usage: /opt [model] temperature 0.7 | top_p 0.9 | "
+                    "max_tokens 512 | num_ctx 2048 | seed -1\n"
+                    "       /opt [model] temperature   (show one) | "
+                    "/opt [model] unset temperature", YELLOW))
             return
-        key, val = (parts + [""])[:2] if len(parts) == 2 else (parts[0], "")
-        if not val:
-            print(c("Usage: /opt <key> <value>", YELLOW))
+        key = parts[0].lower()
+        if key == "unset" and len(parts) >= 2:
+            ok, msg = self.opts.unset(target, parts[1])
+            print(c(msg, GREEN if ok else RED))
             return
-        ok, msg = self.opts.set(key, val)
+        if len(parts) == 1:               # show single option
+            val = self.opts.get(target, key)
+            if val is None:
+                print(c(f"Option '{key}' is not set (Ollama default used).", YELLOW))
+            else:
+                print(c(f"{key} = {val}" +
+                        (f" (model [{target}])" if target else " (session)"), BOLD))
+            return
+        ok, msg = self.opts.set(target, key, parts[1])
         print(c(msg, GREEN if ok else RED))
 
     def cmd_clear(self, rest):
@@ -422,13 +469,16 @@ class App:
             if low in ("quit", "exit"):
                 break
             elif low == "help":
-                print("/models | /dl <n> | /list | /w <model> <text> (chat) | "
+                print("/models | /bmc (25GB+ giants) | /dl <n> | /list | "
+                      "/w <model> <text> (chat) | "
                       "/sys [model|all] <prompt> | /opt <key> <val> | "
                       "/clear [model] | /stf <tps> | /autt [model] | "
                       "/dnm <github-url> | /dnmf <path> | /delm <name/#> | "
                       "/status | /stop <job id> | quit")
             elif low == "/models":
                 self.cmd_models()
+            elif low == "/bmc":
+                self.cmd_bmc()
             elif low.startswith("/dnmf"):
                 self.cmd_dnmf(line[5:].strip())
             elif low.startswith("/dnm"):
