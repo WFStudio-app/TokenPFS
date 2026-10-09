@@ -80,15 +80,19 @@ def pull_model(name: str, on_progress=None, timeout=3600):
 
 
 def generate_stream(model: str, prompt: str, tokens_per_sec: float,
-                    on_token=None, stop_flag=None, timeout=600):
-    """Generate an answer token-by-token, throttled to ~tokens_per_sec.
+                    on_token=None, stop_flag=None, timeout=600, options=None):
+    """Generate an answer token-by-token, throttled to <= tokens_per_sec.
 
-    Returns (full_text, n_tokens, elapsed_seconds) or raises.
-    Throttling simulates the requested tps rate on top of real generation.
+    Returns (full_text, n_tokens, elapsed_seconds, stats) or raises.
+    `stats` carries REAL metrics from Ollama's done-payload:
+      eval_count, eval_duration, prompt_eval_count, source ("ollama").
+    Throttling only caps the display rate; counts stay honest.
     """
     import time
+    opts = dict(options or {})
+    opts.setdefault("num_predict", 512)
     payload = {"model": model, "prompt": prompt, "stream": True,
-               "options": {"num_predict": 512}}
+               "options": opts}
     text_parts = []
     n_tok = 0
     start = time.time()
@@ -117,8 +121,20 @@ def generate_stream(model: str, prompt: str, tokens_per_sec: float,
                 if on_token:
                     on_token(tok)
             if obj.get("done"):
-                stats = obj.get("eval_count")
-                if isinstance(stats, int) and stats > 0:
-                    n_tok = max(n_tok, 0)  # keep streamed count
+                # REAL metrics from Ollama (not our own timer)
+                eval_count = obj.get("eval_count") or 0
+                eval_dur_us = obj.get("eval_duration") or 0
+                stats = {
+                    "source": "ollama",
+                    "eval_count": eval_count,
+                    "eval_duration_us": eval_dur_us,
+                    "prompt_eval_count": obj.get("prompt_eval_count") or 0,
+                    "real_tps": (eval_count / (eval_dur_us / 1e6))
+                                if eval_dur_us else 0.0,
+                }
+                n_tok = max(n_tok, eval_count)
                 break
-    return "".join(text_parts), n_tok, time.time() - start
+    stats = locals().get("stats") or {"source": "ollama", "eval_count": n_tok,
+                                      "eval_duration_us": 0,
+                                      "prompt_eval_count": 0, "real_tps": 0.0}
+    return "".join(text_parts), n_tok, time.time() - start, stats

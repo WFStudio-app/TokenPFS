@@ -13,15 +13,20 @@ import time
 class Job:
     _seq = itertools_count = None
 
-    def __init__(self, jid, number, model, prompt, tps, runner):
+    def __init__(self, jid, number, model, prompt, tps, runner,
+                 prompt_full=None, chat=None):
         self.id = jid
         self.number = number      # "07"
         self.model = model
         self.prompt = prompt
-        self.tps = tps            # tokens per second target
+        self.prompt_full = prompt_full or prompt   # ChatML context sent to Ollama
+        self.chat = chat                           # ChatStore for history append
+        self.tps = tps            # tokens per second target (cap)
         self.runner = runner      # callable(model, prompt, tps, on_token, stop_flag)
         self.state = "queued"     # queued | generating | done | error | stopped
         self.tokens_out = 0
+        self.stats = None         # real metrics from Ollama (eval_count...)
+        self.demo = False         # True if answer came from offline demo
         self.started = None
         self.finished = None
         self.answer = ""
@@ -57,11 +62,19 @@ class Manager:
         self._lock = threading.Lock()
         self._next_id = 1
 
-    def submit(self, number, model, prompt, tps) -> Job:
+    def submit(self, number, model, question, tps, prompt_full=None,
+               chat=None) -> Job:
         with self._lock:
             jid = self._next_id
             self._next_id += 1
-        job = Job(jid, number, model, prompt, tps, self.runner)
+        if prompt_full is None:
+            prompt_full = question
+        job = Job(jid, number, model, question, tps, self.runner,
+                  prompt_full=prompt_full, chat=chat)
+        # register the user turn BEFORE launching the thread so a second
+        # /w to the same model can never read a half-written history
+        if chat is not None and number not in ("?", ""):
+            chat.add(number, "user", question)
         with self._lock:
             self.jobs.append(job)
         t = threading.Thread(target=self._run, args=(job,), daemon=True)
@@ -78,15 +91,30 @@ class Manager:
                 job.tokens_out += 1
 
         try:
-            text, ntok, elapsed = self.runner(job.model, job.prompt, job.tps,
-                                              on_token, job.stop_flag)
+            res = self.runner(job.model, job.prompt_full, job.tps,
+                              on_token, job.stop_flag)
+            # runner may return (text, ntok, elapsed) or (..., stats)
+            if len(res) == 4:
+                text, ntok, elapsed, stats = res
+            else:
+                text, ntok, elapsed = res
+                stats = {"source": "timer", "eval_count": ntok}
             with job.lock:
+                job.stats = stats
+                job.demo = stats.get("source") == "demo"
+                # honest counts: prefer Ollama's eval_count over our timer
+                real = stats.get("eval_count")
+                if isinstance(real, int) and real > 0:
+                    job.tokens_out = real
                 if job.stop_flag.is_set():
                     job.state = "stopped"
                 else:
                     job.answer = text
-                    job.tokens_out = ntok or job.tokens_out
                     job.state = "done"
+                # append assistant turn to chat history (context memory)
+                if job.chat is not None and job.number not in ("?", ""):
+                    job.chat.add(job.number, "assistant",
+                                 text.strip()[:2000])
         except Exception as e:
             job.error = str(e)
             job.state = "error"
@@ -110,7 +138,15 @@ class Manager:
                 if len(ans) > 400:
                     ans = ans[:400] + "…"
                 label = f"[{j.number}] {j.model}" if j.number not in ("?", "") else j.model
-                out.append(f"> {label} - {ans} [{dur:.1f}s] [{j.tokens_out} tok]")
+                demo_tag = " [DEMO]" if j.demo else ""
+                # honest tok/s: prefer Ollama eval_count/eval_duration
+                st = j.stats or {}
+                real_tps = st.get("real_tps") or 0.0
+                src = st.get("source", "timer")
+                tps_s = f"{real_tps:.1f} tok/s ({src})" if real_tps else \
+                        f"{(j.tokens_out / dur if dur else 0):.1f} tok/s ({src})"
+                out.append(f"> {label}{demo_tag} - {ans} [{dur:.1f}s] "
+                           f"[{j.tokens_out} tok] [{tps_s}]")
             elif j.state == "error" and not getattr(j, "_printed", False):
                 j._printed = True
                 label = f"[{j.number}] {j.model}" if j.number not in ("?", "") else j.model

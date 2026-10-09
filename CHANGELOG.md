@@ -2,6 +2,14 @@
 
 Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 
+## Unreleased — chat & generation upgrade (will be the next release)
+- **Chat context**: `/w` is now a real conversation — system prompt + full per-model history (ChatML) sent to Ollama; assistant turns stored automatically. `/clear [model]` resets history (or all).
+- **System prompt**: `/sys [model|all] <text>` — role / answer-language for one model or whole session.
+- **Generation settings**: `/opt temperature|top_p|max_tokens|num_ctx|seed <value>` with validation; mapped into Ollama `options` (`max_tokens`→`num_predict`).
+- **Honest metrics**: tok/s and token counts taken from Ollama response fields `eval_count`/`eval_duration` (shown as `(ollama)`); own timer only as fallback `(timer)`.
+- **[DEMO] label**: every fake offline-generated answer is visibly marked `[DEMO]` in the answer line and demo mode announced at startup.
+- Bugfix: duplicated user turns in history when two `/w` raced; crash `Manager.submit(prompt=...)` TypeError.
+
 ## v2.0.0-alpha — Global update (cross-platform support)
 - **Windows support**: new PowerShell installer `scripts/install.ps1` (winget for Python/Git, official OllamaSetup.exe silent install, `%USERPROFILE%\.tokenpfs\TokenPFS`, `tokenpfs.cmd` launcher + PATH).
 - **macOS hardening**: Intel/Apple Silicon memory & temperature probing via sysctl/vm_stat/powermetrics; Homebrew path in installer.

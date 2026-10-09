@@ -26,6 +26,8 @@ from tokenpfs.core.models import (MODEL_CATALOG, catalog_lines, get_by_index,
                                   HEAVY_THRESHOLD_GB)                # noqa: E402
 from tokenpfs.core.registry import Registry                          # noqa: E402
 from tokenpfs.core.jobs import Manager                               # noqa: E402
+from tokenpfs.core.chatml import ChatStore                           # noqa: E402
+from tokenpfs.core.options import GenOptions                         # noqa: E402
 from tokenpfs.core import hardware                                   # noqa: E402
 from tokenpfs.modules import ollama_api                               # noqa: E402
 from tokenpfs.modules import custom_models                           # noqa: E402
@@ -41,6 +43,8 @@ class App:
         self.reg = Registry(os.path.join(DATA_DIR, "models.json"))
         self.tps = 8.0
         self.mgr = Manager(self._runner)
+        self.chat = ChatStore(os.path.join(DATA_DIR, "chat.json"))
+        self.opts = GenOptions()
         self.ok = ollama_api.is_alive()
         self.ver = ollama_api.server_version()
 
@@ -50,7 +54,8 @@ class App:
             return self._demo_runner(model, prompt, tps, on_token, stop_flag)
         try:
             return ollama_api.generate_stream(model, prompt, tps,
-                                              on_token, stop_flag)
+                                              on_token, stop_flag,
+                                              options=self.opts.payload_options())
         except Exception as e:
             raise RuntimeError(f"ollama error: {e}")
 
@@ -70,7 +75,9 @@ class App:
             time.sleep(period)
             on_token(w + " ")
             n += 1
-        return text, n, time.time() - start
+        stats = {"source": "demo", "eval_count": n, "eval_duration_us": 0,
+                 "prompt_eval_count": 0, "real_tps": 0.0}
+        return text, n, time.time() - start, stats
 
     # ---- commands ----
     def cmd_models(self):
@@ -164,9 +171,60 @@ class App:
         num, model_name = self._resolve_model(key)
         if not model_name:
             return
-        job = self.mgr.submit(num, model_name, question, self.tps)
+        # chat mode: build prompt with full dialog context (system + history)
+        prompt = self.chat.build_prompt(num, question)
+        job = self.mgr.submit(num, model_name, question, self.tps,
+                              prompt_full=prompt, chat=self.chat)
+        hist = len(self.chat.history(num)) - 1   # user turn added by submit()
         print(c(f"Job #{job.id} started → [{num}] {model_name} "
-                f"@ {self.tps:.1f} tok/s", GREEN))
+                f"@ cap {self.tps:.1f} tok/s (chat history: {hist} msg)", GREEN))
+
+    def cmd_sys(self, rest):
+        """/sys [model|all] [text] — system prompt (role / answer language)."""
+        parts = rest.split(maxsplit=1)
+        if not parts:
+            cur_all = self.chat.get_system("all")
+            print(c(f"System prompt (session): {cur_all or '(not set)'}", YELLOW))
+            return
+        if len(parts) == 1:
+            target, text = "all", parts[0]
+        else:
+            key, text = parts
+            num, _ = self._resolve_model(key)
+            target = num if num and num != "?" else ("all" if key == "all" else None)
+            if target is None:
+                return
+        self.chat.set_system(target, text)
+        scope = "whole session" if target == "all" else f"model [{target}]"
+        print(c(f"System prompt set for {scope}: {text!r}", GREEN))
+
+    def cmd_opt(self, rest):
+        """/opt [key value] — generation settings (temperature, top_p...)."""
+        parts = rest.split(maxsplit=1)
+        if not parts:
+            print(c("Generation options: " + self.opts.summary(), BOLD))
+            print(c("Usage: /opt temperature 0.7 | top_p 0.9 | max_tokens 512 "
+                    "| num_ctx 2048 | seed -1", YELLOW))
+            return
+        key, val = (parts + [""])[:2] if len(parts) == 2 else (parts[0], "")
+        if not val:
+            print(c("Usage: /opt <key> <value>", YELLOW))
+            return
+        ok, msg = self.opts.set(key, val)
+        print(c(msg, GREEN if ok else RED))
+
+    def cmd_clear(self, rest):
+        """/clear [model] — reset chat history for one model or all."""
+        arg = rest.strip()
+        if not arg:
+            self.chat.clear()
+            print(c("Chat history cleared for ALL models.", GREEN))
+            return
+        num, _ = self._resolve_model(arg)
+        if not num:
+            return
+        self.chat.clear(num)
+        print(c(f"Chat history cleared for model [{num}].", GREEN))
 
     def dashboard(self):
         active = self.mgr.active()
@@ -364,10 +422,11 @@ class App:
             if low in ("quit", "exit"):
                 break
             elif low == "help":
-                print("/models | /dl <n> | /list | /w <model> <text> | "
-                      "/stf <tps> | /autt [model] | /dnm <github-url> | "
-                      "/dnmf <path> | /delm <name/#> | /status | "
-                      "/stop <job id> | quit")
+                print("/models | /dl <n> | /list | /w <model> <text> (chat) | "
+                      "/sys [model|all] <prompt> | /opt <key> <val> | "
+                      "/clear [model] | /stf <tps> | /autt [model] | "
+                      "/dnm <github-url> | /dnmf <path> | /delm <name/#> | "
+                      "/status | /stop <job id> | quit")
             elif low == "/models":
                 self.cmd_models()
             elif low.startswith("/dnmf"):
@@ -392,6 +451,12 @@ class App:
                     print(f"  [{n}] {e['name']} (~{e['size_gb']} GB)")
             elif low.startswith("/w"):
                 self.ask(line[2:].strip())
+            elif low.startswith("/sys"):
+                self.cmd_sys(line[4:].strip())
+            elif low.startswith("/opt"):
+                self.cmd_opt(line[4:].strip())
+            elif low.startswith("/clear"):
+                self.cmd_clear(line[6:].strip())
             elif low.startswith("/stf"):
                 arg = line[4:].strip()
                 try:
