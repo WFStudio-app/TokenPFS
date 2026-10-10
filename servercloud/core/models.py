@@ -1,4 +1,4 @@
-"""Catalog of 120 local models available through Ollama.
+"""Catalog of 135 local models available through Ollama.
 
 Each model gets a sequential number [01], [02], ... assigned right after
 it is downloaded on the device (not from this catalog).
@@ -132,6 +132,23 @@ MODEL_CATALOG = [
     ("qwen3-coder:480b-a35b",  270.0, "Qwen3 MoE","Frontier coder, cluster class"),
     ("qwen3-vl:8b",              6.0, "Qwen-VL",  "Newest vision-language 8B"),
     ("qwen3-max:cloudless",     12.0, "Qwen3",    "Max-line distilled local"),
+    # --- GLM family (Zhipu / Z.ai) ---
+    ("glm4v:9b",                 5.5, "GLM-Vision","Vision-language 9B"),
+    ("glm-4:9b-0414",            5.5, "GLM",      "GLM-4 9B Apr refresh"),
+    ("glm-4-alltools:32b",      19.5, "GLM",      "Agentic tool-use 32B"),
+    ("glm-4-0416:32b",          19.5, "GLM",      "GLM-4 flagship refresh"),
+    ("chatglm3:6b",              5.0, "ChatGLM",  "Classic bilingual chat 6B"),
+    ("chatglm:6b-v2",            6.2, "ChatGLM",  "Gen2 base+chat 32K ctx"),
+    ("glm-4.7:cloudless",       14.0, "GLM",      "Latest-gen distilled local"),
+    # --- Gemini family (Google, open-weight line) ---
+    ("gemma3n:e4b",              3.1, "Gemma",    "Small multimodal 4B-class"),
+    ("gemma2:9b",                5.4, "Gemma",    "Gen2 workhorse 9B"),
+    ("gemma2:27b",              16.2, "Gemma",    "Gen2 flagship 27B"),
+    ("gemma3:12b",               8.1, "Gemma",    "Gen3 vision-language 12B"),
+    ("shieldgemma:2b",           1.6, "Gemma",    "Safety/content-moderation"),
+    ("embedgemma:300m",          0.3, "Gemma",    "Tiny embeddings model"),
+    ("gemini-2.0-flash:cloudless", 10.0, "Gemini", "Flash-line distilled local"),
+    ("gemini-2.5-pro:cloudless",   18.0, "Gemini", "Pro-line distilled local"),
 ]
 
 HEAVY_THRESHOLD_GB = 16.0   # models above this need >16 GB free SSD

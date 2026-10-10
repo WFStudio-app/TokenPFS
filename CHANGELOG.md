@@ -1,3 +1,7 @@
+## [Unreleased] — catalog GLM + Gemini sweep (120 → 135 models)
+
+- **Catalog expanded 120 → 135 models**: GLM family additions (`glm4v:9b`, `glm-4:9b-0414`, `glm-4-alltools:32b`, `glm-4-0416:32b`, `chatglm3:6b`, `chatglm:6b-v2`, `glm-4.7:cloudless`) and Google Gemini/Gemma open-weight line (`gemma3n:e4b`, `gemma2:9b/27b`, `gemma3:12b`, `shieldgemma:2b`, `embedgemma:300m`, `gemini-2.0-flash:cloudless`, `gemini-2.5-pro:cloudless`). Duplicate entries removed; `/apis` validation range now 01..135.
+
 ## [Unreleased] — catalog Qwen sweep (90 → 120 models)
 
 - **Catalog expanded 90 → 120 models**: full Qwen family sweep — Qwen 1.0 (`qwen:7b/14b/32b/72b`), Qwen2 (`0.5b/1.5b/7b/72b`), Qwen2.5 gaps (`1.5b`, `14b`), coders (`coder:1.5b/7b/14b/next:80b`), vision-language (`vl:3b/7b/32b/72b`, `qwen3-vl:8b`), math (`math:1.5b/7b/72b`), `qwq:32b-preview`, Qwen3 (`1.7b/14b/30b-a3b/32b/coder:30b-a3b/coder:480b-a35b/max:cloudless`). `/bmc` now lists 24 giants incl. `qwen3-coder:480b-a35b`.
