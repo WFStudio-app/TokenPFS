@@ -110,7 +110,33 @@ Both questions were generated **in parallel**.
 | `/cptsm` | List configured remote APIs + active routing |
 | `/cptsuse <n>` / `/cptslocal` | Switch routing to remote #n / back to local models |
 | `/cptsdel <n>` | Remove a remote API |
+| `/hf <query>` | Search **Hugging Face** for GGUF text-generation models, pick one, download & register in Ollama (`hf/...` name, numbered `[NN]`) |
+| `/hfd <query>` | Browse the Hugging Face **dataset database**: search datasets, list data files (.parquet/.jsonl/.csv), download any into `~/.servercloud/datasets/` |
+| `/hftok [token]` | Set a Hugging Face token for gated/private repos (or export `SERVERCLOUD_HF_TOKEN`) |
 | `help` / `quit` | Command list / exit (waits for running jobs up to 60 s) |
+
+---
+
+## 🤗 Hugging Face integration (`/hf`, `/hfd`, `/hftok`)
+
+ServerCloud can pull models and data straight from huggingface.co without
+installing `huggingface_hub` — pure stdlib HTTP.
+
+```
+servercloud> /hf qwen2.5 gguf
+Searching Hugging Face for 'qwen2.5 gguf'...
+GGUF-capable models (15):
+   1. bartowski/Qwen2.5-32B-Instruct-GGUF    smallest file ~ 9.4 GB [...]
+   ...
+Download which number? (1-15) 4
+Downloading Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q2_k.gguf...
+  downloading: [###############         ]  62.3% (171 MB/275 MB)
+HF model ready: [03] hf/qwen2.5-0.5b-instruct-gguf-qwen2.5-0.5b-instruct-q2_k:latest (0.28 GB, source: huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)
+```
+
+* Multi-part (sharded) GGUFs are detected and their real total size is shown before you confirm.
+* Gated repositories (Llama, Gemma, Mistral official weights) need HF account approval — set the token with `/hftok <token>` or env `SERVERCLOUD_HF_TOKEN`.
+* `/hfd <query>` opens the dataset database (search → repo file tree → download .parquet/.jsonl/.csv/.tsv/.txt), enabling offline eval/fine-tuning data workflows. Files land in `~/.servercloud/datasets/<owner__name>/`.
 
 ---
 
@@ -241,7 +267,8 @@ ServerCloud/
     ├── modules/
     │   ├── ollama_api.py     # Ollama HTTP client (pull/generate/tags)
     │   ├── api_server.py     # /apis — host local models over HTTP (SCA keys)
-    │   └── cpts_api.py       # /cpts — client for remote ServerCloud APIs
+    │   ├── cpts_api.py       # /cpts — client for remote ServerCloud APIs
+    │   └── huggingface_api.py# /hf /hfd — HF model & dataset database access
     └── utils/
         └── colors.py         # ANSI colors + startup banner
 ```

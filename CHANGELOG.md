@@ -1,3 +1,10 @@
+## [Unreleased] — Hugging Face integration
+
+- **Hugging Face model downloads (`/hf <query>`)**: searches huggingface.co text-generation repos with GGUF quantizations, shows real total sizes (multi-part shards merged), streams the chosen `.gguf` into `~/.servercloud/custom/`, registers it in Ollama via generated Modelfile (or registry-only when offline) and numbers it `[NN]` like any other model. Pure stdlib — no `huggingface_hub` dependency.
+- **HF dataset database access (`/hfd <query>`)**: search datasets by name, browse repo file tree, download `.parquet/.jsonl/.json/.csv/.tsv/.txt` files into `~/.servercloud/datasets/<owner__name>/`.
+- **Gated/private repos (`/hftok <token>`)**: session token or env `SERVERCLOUD_HF_TOKEN`, sent as Bearer only to huggingface.co; clear 401/403 guidance for license acceptance.
+- New module `servercloud/modules/huggingface_api.py`; README section «🤗 Hugging Face integration»; help updated.
+
 ## [Unreleased] — catalog GLM + Gemini sweep (120 → 135 models)
 
 - **Catalog expanded 120 → 135 models**: GLM family additions (`glm4v:9b`, `glm-4:9b-0414`, `glm-4-alltools:32b`, `glm-4-0416:32b`, `chatglm3:6b`, `chatglm:6b-v2`, `glm-4.7:cloudless`) and Google Gemini/Gemma open-weight line (`gemma3n:e4b`, `gemma2:9b/27b`, `gemma3:12b`, `shieldgemma:2b`, `embedgemma:300m`, `gemini-2.0-flash:cloudless`, `gemini-2.5-pro:cloudless`). Duplicate entries removed; `/apis` validation range now 01..135.

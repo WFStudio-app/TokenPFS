@@ -33,6 +33,7 @@ from servercloud.core.options import GenOptions                         # noqa: 
 from servercloud.core import hardware                                   # noqa: E402
 from servercloud.modules import ollama_api                               # noqa: E402
 from servercloud.modules import custom_models                           # noqa: E402
+from servercloud.modules import huggingface_api                         # noqa: E402
 from servercloud.modules.api_server import (ApiKey, KeyStore, ApiServer,
                                          generate_key)                 # noqa: E402
 from servercloud.modules.cpts_api import (CptsStore, CptsClient,
@@ -887,6 +888,136 @@ class App:
         num = self.reg.add(name, size)
         print(c(f"Local model ready: [{num}] {name} ({size} GB, source: local file)", GREEN))
 
+    # ---- Hugging Face: /hf (models), /hfd (datasets), /hftok ----
+    def cmd_hf(self, rest):
+        """Search HF text-generation models and download a GGUF into Ollama."""
+        if not rest:
+            print(c("Usage: /hf <search query>   e.g. /hf qwen2.5 gguf", YELLOW))
+            print(c("       /hfd <query> — search HF datasets (database)", YELLOW))
+            print(c("       /hftok <HF token> — set token for gated repos "
+                    "(or env SERVERCLOUD_HF_TOKEN)", YELLOW))
+            return
+        try:
+            print(c(f"Searching Hugging Face for '{rest}'...", YELLOW))
+            results = huggingface_api.search_models(rest, limit=15)
+        except huggingface_api.HFError as e:
+            print(c(str(e), RED))
+            return
+        if not results:
+            print(c("Nothing found.", YELLOW))
+            return
+        usable = []
+        for m in results:
+            try:
+                ggufs = huggingface_api.list_gguf_files(m["id"])
+            except huggingface_api.HFError:
+                ggufs = []
+            if ggufs:
+                smallest = min(ggufs, key=lambda x: x[1])
+                usable.append((m["id"], smallest[0], smallest[1] / 1048576 ** 3))
+        if not usable:
+            print(c("Found models but none has .gguf quantizations.", YELLOW))
+            for m in results[:8]:
+                print(f"    {m['id']}  (downloads {m['downloads']})")
+            print(c("Tip: search with 'gguf' in the query.", YELLOW))
+            return
+        print(c(f"GGUF-capable models ({len(usable)}):", BOLD))
+        for i, (rid, fn, gb) in enumerate(usable, 1):
+            print(f"  {i:>2}. {rid:<45} smallest file ~{gb:5.1f} GB [{fn}]")
+        sel = input(c(f"Download which number? (1-{len(usable)}) ", YELLOW)).strip()
+        if not sel.isdigit() or not (1 <= int(sel) <= len(usable)):
+            print(c("Cancelled.", YELLOW))
+            return
+        rid, fn, gb = usable[int(sel) - 1]
+        if re.search(r"-\d{5}-of-\d{5}\.gguf$", fn, re.I):
+            print(c(f"Note: '{fn}' is one shard of a multi-part GGUF; Ollama "
+                    "needs all parts. Single-file quant recommended.", YELLOW))
+        name = huggingface_api.name_from_repo(rid, fn)
+        if not self.confirm_download(name):
+            print(c("Cancelled.", YELLOW))
+            return
+        dest_dir = os.path.join(DATA_DIR, "custom")
+        url = huggingface_api.gguf_download_url(rid, fn)
+        print(c(f"Downloading {rid}/{fn} (~{gb:.1f} GB)...", YELLOW))
+        try:
+            path = huggingface_api.fetch_file_to(url, dest_dir)
+        except huggingface_api.HFError as e:
+            print(c(str(e), RED))
+            return
+        size = huggingface_api.size_gb(path)
+        ok_ollama = False
+        if self.ok:
+            mf = os.path.join(dest_dir, f"Modelfile.{name.replace('/', '_').replace(':', '_')}")
+            with open(mf, "w") as f:
+                f.write(huggingface_api.make_modelfile(path))
+            ok_ollama = huggingface_api.register_with_ollama(mf, name)
+            print(c("Registered in Ollama." if ok_ollama
+                    else "Ollama create failed — registry-only mode.", YELLOW))
+        else:
+            print(c("Ollama offline — registered in ServerCloud registry only (demo).", YELLOW))
+        num = self.reg.add(name, size)
+        print(c(f"HF model ready: [{num}] {name} ({size} GB, source: huggingface.co/{rid})", GREEN))
+
+    def cmd_hfd(self, rest):
+        """Access the Hugging Face dataset database: search + download files."""
+        if not rest:
+            print(c("Usage: /hfd <dataset query>   e.g. /hfd gsm8k", YELLOW))
+            return
+        try:
+            print(c(f"Searching HF dataset database for '{rest}'...", YELLOW))
+            results = huggingface_api.search_datasets(rest, limit=15)
+        except huggingface_api.HFError as e:
+            print(c(str(e), RED))
+            return
+        if not results:
+            print(c("Nothing found.", YELLOW))
+            return
+        print(c("Datasets:", BOLD))
+        for i, d in enumerate(results, 1):
+            flag = " [gated]" if d["gated"] else ""
+            print(f"  {i:>2}. {d['id']:<50} dl:{d['downloads']:>9,} likes:{d['likes']}{flag}")
+        sel = input(c(f"Open which number? (1-{len(results)}, Enter=cancel) ", YELLOW)).strip()
+        if not sel.isdigit() or not (1 <= int(sel) <= len(results)):
+            print(c("Cancelled.", YELLOW))
+            return
+        rid = results[int(sel) - 1]["id"]
+        try:
+            files = huggingface_api.list_repo_files(rid, is_dataset=True)
+        except huggingface_api.HFError as e:
+            print(c(str(e), RED))
+            return
+        data_files = [(p, s) for p, s in files
+                      if p.lower().endswith((".jsonl", ".json", ".csv", ".parquet", ".tsv", ".txt"))]
+        if not data_files:
+            print(c(f"No tabular/text data files in {rid} (only parquet-less repo).", YELLOW))
+            return
+        print(c(f"Data files in {rid}:", BOLD))
+        for i, (p, s) in enumerate(data_files[:20], 1):
+            print(f"  {i:>2}. {p:<60} {s / 1048576:8.2f} MB")
+        sel = input(c(f"Download which file? (1-{min(len(data_files), 20)}) ", YELLOW)).strip()
+        if not sel.isdigit() or not (1 <= int(sel) <= min(len(data_files), 20)):
+            print(c("Cancelled.", YELLOW))
+            return
+        p, s = data_files[int(sel) - 1]
+        url = f"https://huggingface.co/datasets/{rid}/resolve/main/{p}"
+        dest_dir = os.path.join(DATA_DIR, "datasets", rid.replace("/", "__"))
+        try:
+            path = huggingface_api.fetch_file_to(url, dest_dir)
+        except huggingface_api.HFError as e:
+            print(c(str(e), RED))
+            return
+        print(c(f"Dataset file saved: {path} ({os.path.getsize(path)} bytes)", GREEN))
+
+    def cmd_hftok(self, arg):
+        if arg:
+            os.environ["SERVERCLOUD_HF_TOKEN"] = arg.strip()
+            print(c("HF token set for this session (gated repos unlocked if "
+                    "license accepted on huggingface.co).", GREEN))
+        else:
+            print(c("Current token: " + ("set" if os.environ.get("SERVERCLOUD_HF_TOKEN")
+                                          else "not set"), YELLOW))
+            print(c("Usage: /hftok <your-huggingface-token>", YELLOW))
+
     def cmd_delm(self, key):
         if not key:
             print(c("Usage: /delm [model name or number]", YELLOW))
@@ -959,6 +1090,8 @@ class App:
                       "/sys [model|all] <prompt> | /opt [model] <key> [val] | "
                       "/clear [model] | /stf <tps> | /autt [model] | "
                       "/dnm <github-url> | /dnmf <path> | /delm <name/#> | "
+                      "/hf <query> (HuggingFace models) | /hfd <query> (HF datasets) | "
+                      "/hftok [token] | "
                       "/apis <01,02> <Y/N hist> <req/min> <slot#> | "
                       "/apim | /apioff <#> | /apion <#> | /apidel <#> | "
                       "/cpts <SCA-key> [url] | /cptsm | /cptsuse <#> | "
@@ -972,6 +1105,12 @@ class App:
                 self.cmd_dnmf(arg)
             elif head == "/dnm":
                 self.cmd_dnm(arg)
+            elif head == "/hf":
+                self.cmd_hf(arg)
+            elif head == "/hfd":
+                self.cmd_hfd(arg)
+            elif head == "/hftok":
+                self.cmd_hftok(arg)
             elif head == "/delm":
                 self.cmd_delm(arg)
             elif head == "/autt":
