@@ -137,7 +137,8 @@ class ApiServer:
     """Threaded HTTP server exposing selected local models via keys."""
 
     def __init__(self, host, port, resolver, generator, history_provider,
-                 keystore, app_name="TokenPFS", version="?"):
+                 keystore, app_name="TokenPFS", version="?",
+                 record_hook=None):
         self.host = host
         self.port = port
         self.resolve_model = resolver        # fn(num_or_name) -> ollama model name | None
@@ -146,6 +147,8 @@ class ApiServer:
         self.keystore = keystore
         self.app_name = app_name
         self.version = version
+        if record_hook is not None:          # fn(model_ref, user_msg, reply) -> persist dialog
+            self.record_exchange = record_hook
         self._httpd = None
         self._thread = None
 
@@ -274,23 +277,55 @@ def _make_handler(app_ctx: ApiServer):
             else:
                 return self._json(404, {"error": "not found"})
             model_ref = str(body.get("model", ""))
-            norm = model_ref.lstrip("0") or model_ref
-            allowed_norm = [m.lstrip("0") or m for m in key.models]
-            if norm not in allowed_norm:
+            # a key may be referenced by slot number ("01"), by the real
+            # model name ("llama3.2:1b") or by any alias the host resolves
+            def _norm(m):
+                m = str(m)
+                if m.startswith("#"):
+                    return m.lstrip("#0") or "#"     # remote slot #N
+                return m.lstrip("0") or m
+            def _bound(ref):
+                r = _norm(ref)
+                if r in [_norm(m) for m in key.models]:
+                    return True
+                resolved = app_ctx.resolve_model(ref)
+                if resolved:
+                    for m in key.models:
+                        if app_ctx.resolve_model(m) == resolved:
+                            return True
+                return False
+            if not _bound(model_ref):
                 return self._json(403, {"error": f"model {model_ref!r} not bound to this key",
                                         "allowed": key.models})
             real = app_ctx.resolve_model(model_ref)
             if not real:
                 return self._json(404, {"error": f"model {model_ref!r} not available on host"})
-            options = {k: body[k] for k in
-                       ("temperature", "top_p", "max_tokens", "num_ctx", "seed")
-                       if k in body}
+            # accept our own names, Ollama-style aliases and an options{} bag;
+            # unknown keys are ignored so a stray field never breaks the call
+            aliases = {"num_predict": "max_tokens", "max_new_tokens": "max_tokens"}
+            options = {}
+            for k, v in (body.get("options") or {}).items():
+                options[aliases.get(k, k)] = v
+            for k in ("temperature", "top_p", "max_tokens", "num_ctx", "seed"):
+                if k in body and k not in options:
+                    options[k] = body[k]
             try:
                 t0 = time.time()
                 text = app_ctx.generate(real, prompt, options)
                 elapsed = time.time() - t0
             except Exception as e:
                 return self._json(502, {"error": f"generation failed: {e}"})
+            # persist the dialog so /v1/history (Y-keys) and the REPL see it
+            if key.allow_history and hasattr(app_ctx, "record_exchange"):
+                if self.path.startswith("/v1/chat"):
+                    user_msg = ""
+                    for m in reversed(msgs):
+                        if str(m.get("role", "user")) == "user":
+                            user_msg = str(m.get("content", ""))
+                            break
+                else:
+                    user_msg = prompt
+                app_ctx.record_exchange(model_ref, user_msg, text)
             return self._json(200, {"model": real, "requested": model_ref,
                                     "response": text,
                                     "elapsed_s": round(elapsed, 2)})

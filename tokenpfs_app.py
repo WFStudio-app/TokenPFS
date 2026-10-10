@@ -18,6 +18,7 @@ import re
 import sys
 import time
 import threading
+import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -34,6 +35,8 @@ from tokenpfs.modules import ollama_api                               # noqa: E4
 from tokenpfs.modules import custom_models                           # noqa: E402
 from tokenpfs.modules.api_server import (ApiKey, KeyStore, ApiServer,
                                          generate_key)                 # noqa: E402
+from tokenpfs.modules.cpts_api import (CptsStore, CptsClient,
+                                       validate_key as cpts_valid_key)  # noqa: E402
 from tokenpfs.utils.colors import banner, c, GREEN, YELLOW, RED, MAGENTA, BOLD  # noqa: E402
 
 # NOTE: TOKENPFS_HOME is used by scripts/install.sh as the *checkout* dir.
@@ -55,6 +58,8 @@ class App:
         self.ver = ollama_api.server_version()
         # ---- network API (host your local models over the LAN/WAN) ----
         self.keystore = KeyStore(os.path.join(DATA_DIR, "api_keys.json"))
+        # ---- /cpts: client side — call OTHER people's TokenPFS APIs ----
+        self.cpts = CptsStore(os.path.join(DATA_DIR, "cpts.json"))
         self.api = None                 # ApiServer instance when running
         api_host = os.environ.get("TOKENPFS_API_HOST", "0.0.0.0")
         api_port = int(os.environ.get("TOKENPFS_API_PORT", "8777"))
@@ -64,7 +69,8 @@ class App:
                                  generator=self._api_generate,
                                  history_provider=lambda num: self.chat.history(num),
                                  keystore=self.keystore,
-                                 version=version_string())
+                                 version=version_string(),
+                                 record_hook=self._api_record)
             self.api.start()
         except OSError as e:
             print(c(f"API server could not bind {api_host}:{api_port} — {e}", YELLOW))
@@ -77,6 +83,10 @@ class App:
         Accepts registry numbers ("01"), catalog numbers ("3" / "03") and
         exact model names; returns None if the model is not resolvable.
         """
+        # '#N' -> remote /cpts API slot: pass through verbatim so
+        # _api_generate forwards the request to that remote host.
+        if str(ref).startswith("#") and str(ref)[1:].isdigit():
+            return str(ref)
         num, entry = self.reg.find(ref)
         if entry:
             return entry["name"]
@@ -86,15 +96,62 @@ class App:
         return matches[0] if matches else None
 
     def _api_generate(self, model_name, prompt, options):
-        """Blocking generation for API requests (no throttle cap here)."""
+        """Blocking generation for API requests (no throttle cap here).
+
+        If the host itself routes through an active /cpts remote, we forward
+        there instead of hitting the local Ollama — a TokenPFS chain
+        (client -> my API -> someone else's API) then works transparently.
+        """
+        forced = model_name.startswith("#") and model_name[1:].isdigit()
+        slot = model_name[1:] if forced else self.cpts.active
+        if slot:
+            rem = self.cpts.get(slot)
+            if rem:
+                fwd_model = "0" if forced else model_name
+                client = CptsClient(rem["url"], rem["key"])
+                # strip our ChatML framing back to the plain question so the
+                # upstream host receives clean text (it re-wraps on its side)
+                q = prompt
+                if "<|im_start|>" in q:
+                    chunks = [p for p in q.split("<|im_start|>")
+                              if p.startswith("user")]
+                    if chunks:
+                        q = chunks[-1].split("<|im_end|>")[0].split("\n", 1)[-1]
+                try:
+                    text = client.chat(fwd_model, q, options)
+                    self.cpts.remotes[slot]["calls_ok"] += 1
+                    self.cpts.remotes[slot]["last_status"] = "ok (api)"
+                    self.cpts.save()
+                    return text
+                except Exception as e:
+                    self.cpts.remotes[slot]["calls_fail"] += 1
+                    self.cpts.remotes[slot]["last_status"] = f"fail: {e}"
+                    self.cpts.save()
+                    raise RuntimeError(f"cpts forwarding failed: {e}")
         if not self.ok:
-            # demo mode mirrors REPL behaviour when Ollama is offline
+            # demo mode mirrors REPL behaviour when Ollama is offline.
+            # Unwrap ChatML framing so the reply echoes the real question
+            # instead of a raw character count of markup.
+            q = prompt
+            if "<|im_start|>" in q:
+                chunks = [p for p in q.split("<|im_start|>")
+                          if p.startswith("user")]
+                if chunks:
+                    q = chunks[-1].split("<|im_end|>")[0].split("\n", 1)[-1]
+            q = q.strip()
             return (f"[DEMO MODE — Ollama offline] I am {model_name}. "
-                    f"Received {len(prompt)} chars of prompt.")
+                    f"You asked: {q[:200] if q else '(empty)'}")
         text, _n, _el, _stats = ollama_api.generate_stream(
             model_name, prompt, tokens_per_sec=100000.0,
             on_token=None, stop_flag=None, options=options)
         return text
+
+    def _api_record(self, model_ref, user_msg, reply):
+        """Persist an API dialog turn so /v1/history and the REPL see it."""
+        num, entry = self.reg.find(model_ref)
+        name = entry["name"] if entry else str(model_ref)
+        self.chat.add(num or name, "user", user_msg)
+        self.chat.add(num or name, "assistant", reply)
 
     def _api_url_hint(self):
         if not self.api:
@@ -130,15 +187,25 @@ class App:
         if not models:
             print(c("No model numbers given.", RED))
             return
-        bad = []
-        for m in models:
+        # A key may also be bound to a remote /cpts API (#N): requests then
+        # transparently forward to that remote host instead of local Ollama.
+        def _valid_ref(m):
             num, entry = self.reg.find(m)
-            in_catalog = m.isdigit() and 1 <= int(m) <= len(MODEL_CATALOG)
-            if not entry and not in_catalog:
-                bad.append(m)
+            if entry:
+                return True
+            if m.isdigit() and 1 <= int(m) <= len(MODEL_CATALOG):
+                return True
+            if any(n == m for n, _, _, _ in MODEL_CATALOG):
+                return True
+            if m.startswith("#") and m[1:].isdigit() and \
+                    self.cpts.get(m[1:]) is not None:
+                return True
+            return False
+        bad = [m for m in models if not _valid_ref(m)]
         if bad:
-            print(c(f"Unknown model numbers: {', '.join(bad)}. "
-                    f"See /list (downloaded) or /models (catalog).", RED))
+            print(c(f"Unknown model references: {', '.join(bad)}. "
+                    f"Use registry/catalog numbers (01..71), exact names, "
+                    f"or remote APIs as #N (see /cptsm).", RED))
             return
         # history flag
         h = hist_raw.strip().lower()
@@ -229,9 +296,127 @@ class App:
             return
         print(c(f"API key #{arg} ({k.key}) deleted.", GREEN))
 
+    # ---------- /cpts — call OTHER people's TokenPFS APIs ----------
+    def cmd_cpts(self, rest):
+        """`/cpts [API token] [url]` — register a remote TokenPFS API.
+
+        The hoster gave you a key like SCA-XXXX-XXXX-XXXX (they created it
+        with their own /apis). Optionally pass their base URL; default is
+        http://<host>:8777 where <host> comes from the key owner. If no url
+        is given we reuse the last known / or the local demo endpoint.
+        """
+        parts = rest.split()
+        if not parts:
+            print(c("Usage: /cpts <SCA-XXXX-XXXX-XXXX> [base url]", YELLOW))
+            print(c("Example: /cpts SCA-K5A6-SWTW-S4LA http://192.168.1.40:8777",
+                    YELLOW))
+            print(c("After adding, questions (/w) route through the remote "
+                    "API. Manage with /cptsm, /cptsuse, /cptslocal, /cptsdel.",
+                    YELLOW))
+            return
+        key = parts[0].strip().upper()
+        if not cpts_valid_key(key):
+            print(c("Bad key format. Expected SCA-XXXX-XXXX-XXXX "
+                    "(uppercase letters/digits, no 0/O/1/I).", RED))
+            return
+        if len(parts) >= 2:
+            url = parts[1]
+        else:
+            url = os.environ.get("TOKENPFS_CPTS_URL", "http://127.0.0.1:8777")
+        if not re.match(r"^https?://", url):
+            print(c("Base url must start with http:// or https://", RED))
+            return
+        client = CptsClient(url, key, timeout=10)
+        # verify connectivity + that it really is a TokenPFS API
+        try:
+            info = client.health()
+        except Exception as e:
+            print(c(f"Cannot reach {url}/api/health — {e}", RED))
+            print(c("Key NOT saved. Check the address/port the hoster gave you.",
+                    YELLOW))
+            return
+        if str(info.get("app", "")).lower() != "tokenpfs":
+            print(c(f"{url} answered but is not a TokenPFS API "
+                    f"(got app={info.get('app')!r}). Key NOT saved.", RED))
+            return
+        # verify the key itself works against this server
+        try:
+            models = client.models()
+        except urllib.error.HTTPError as e:
+            reason = {401: "invalid or disabled key",
+                      429: "rate limit already exhausted"}.get(e.code, str(e))
+            print(c(f"Key rejected by server ({e.code}: {reason}). "
+                    f"Key NOT saved.", RED))
+            return
+        except Exception as e:
+            print(c(f"Model check failed — {e}. Key NOT saved.", RED))
+            return
+        slot, rem = self.cpts.add(url, key)
+        self.cpts.set_active(slot)     # newly added remote becomes active
+        print(c(f"Remote API #{slot} added and ACTIVATED:", BOLD))
+        print(f"   URL      : {rem['url']}")
+        print(f"   Key      : {c(key, GREEN)}")
+        print(f"   Server   : TokenPFS {info.get('version', '?')}")
+        print(f"   Models   : {', '.join(str(m.get('name', m)) for m in models) or '(none listed)'}")
+        print(c(f"From now on /w questions go through this remote API. "
+                f"Switch back to local models with /cptslocal.", YELLOW))
+
+    def cmd_cptsm(self, rest):
+        """List configured remote APIs."""
+        remotes = self.cpts.all()
+        if not remotes:
+            print(c("No remote APIs yet. Add one: /cpts <SCA-key> [url]",
+                    YELLOW))
+            return
+        mode = (f"ACTIVE → remote #{self.cpts.active}" if self.cpts.active
+                else "routing: LOCAL Ollama (see /cptsuse)")
+        print(c(f"Remote TokenPFS APIs ({mode}):", BOLD))
+        for n in sorted(remotes, key=lambda x: int(x)):
+            r = remotes[n]
+            flag = c("[>>]", GREEN) if self.cpts.active == n else "   "
+            print(f"  {flag} #{n:>3} {r['url']}  key={r['key']}  "
+                  f"ok={r['calls_ok']} fail={r['calls_fail']}  last={r['last_status']}")
+        print(c("Commands: /cptsuse <#> | /cptslocal | /cptsdel <#> | "
+                "/clear cpts#<n>", YELLOW))
+
+    def cmd_cptsuse(self, arg):
+        arg = arg.strip()
+        if not arg.isdigit() or not self.cpts.get(arg):
+            print(c("Usage: /cptsuse <remote number> (see /cptsm)", YELLOW))
+            return
+        self.cpts.set_active(arg)
+        print(c(f"Routing switched to remote API #{arg} "
+                f"({self.cpts.get(arg)['url']}).", GREEN))
+
+    def cmd_cptslocal(self, arg):
+        self.cpts.deactivate()
+        print(c("Routing switched back to LOCAL models (Ollama/demo).", GREEN))
+
+    def cmd_cptsdel(self, arg):
+        arg = arg.strip()
+        if not arg.isdigit():
+            print(c("Usage: /cptsdel <remote number>", YELLOW))
+            return
+        was_active = self.cpts.active == arg
+        r = self.cpts.remove(arg)
+        if not r:
+            print(c(f"Remote API #{arg} not found.", RED))
+            return
+        msg = f"Remote API #{arg} ({r['url']}) deleted."
+        if was_active:
+            msg += " Routing fell back to local models."
+        print(c(msg, GREEN))
+
 
     # ---- ollama runner with graceful fallback (demo mode if offline) ----
     def _runner(self, model, prompt, tps, on_token, stop_flag, number=None):
+        # /cpts routing: an active remote TokenPFS API answers instead of
+        # the local Ollama. ChatML context is unwrapped to the last user
+        # turn — the remote host keeps its own history per key.
+        remote_slot = self.cpts.active
+        if remote_slot:
+            return self._cpts_runner(remote_slot, model, prompt, tps,
+                                     on_token, stop_flag)
         if not self.ok:
             return self._demo_runner(model, prompt, tps, on_token,
                                      stop_flag, number)
@@ -241,6 +426,48 @@ class App:
                                               options=self.opts.payload_options(number))
         except Exception as e:
             raise RuntimeError(f"ollama error: {e}")
+
+    def _cpts_runner(self, slot, model, prompt, tps, on_token, stop_flag):
+        """Route one generation through a remote TokenPFS API (/cpts)."""
+        rem = self.cpts.get(slot)
+        if not rem:
+            raise RuntimeError(f"cpts remote #{slot} disappeared")
+        client = CptsClient(rem["url"], rem["key"])
+        # unwrap ChatML -> last user turn (remote has no access to our ctx)
+        question = prompt
+        if "<|im_start|>" in prompt:
+            chunks = [p for p in prompt.split("<|im_start|>")
+                      if p.startswith("user")]
+            if chunks:
+                question = chunks[-1].split("<|im_end|>")[0].split("\n", 1)[-1]
+        start = time.time()
+        try:
+            text = client.chat(model, question,
+                               options=self.opts.payload_options(None))
+        except Exception as e:
+            self.cpts.remotes[slot]["calls_fail"] += 1
+            self.cpts.remotes[slot]["last_status"] = f"fail: {e}"
+            self.cpts.save()
+            raise RuntimeError(f"cpts remote #{slot} error: {e}")
+        if stop_flag.is_set():
+            # user aborted while we waited for the remote — don't stream
+            n = max(len(text.split()), 1)
+            dur = max(time.time() - start, 0.001)
+        else:
+            n = max(len(text.split()), 1)
+            dur = max(time.time() - start, 0.001)
+            # stream the answer in word-chunks so the UI looks identical
+            for w in text.split(" "):
+                if stop_flag.is_set():
+                    break
+                on_token(w + " ")
+        self.cpts.remotes[slot]["calls_ok"] += 1
+        self.cpts.remotes[slot]["last_status"] = f"ok ({dur:.1f}s)"
+        self.cpts.save()
+        stats = {"source": f"cpts#{slot}", "eval_count": n,
+                 "eval_duration_us": int(dur * 1e6),
+                 "prompt_eval_count": len(question), "real_tps": n / dur}
+        return text, n, dur, stats
 
     @staticmethod
     def _demo_runner(model, prompt, tps, on_token, stop_flag, number=None):
@@ -346,11 +573,20 @@ class App:
         num = self.reg.add(name, size)
         print(c(f"Model ready: [{num}] {name}", GREEN))
 
-    def _resolve_model(self, key, quiet=False):
+    def _resolve_model(self, key, quiet=False, remote_aware=True):
         """Resolve model by registry number, exact name, or unique catalog name."""
         num, entry = self.reg.find(key)
         if entry:
             return num, entry["name"]
+        # /cpts routing: an active remote API owns its own model list —
+        # accept any reference and let the remote host resolve/validate it.
+        # (remote_aware=False is used by the /w router itself, which must
+        #  first try a LOCAL resolution to translate 'qwen' -> 'qwen2.5:0.5b')
+        slot = self.cpts.active if remote_aware else None
+        if slot:
+            rem = self.cpts.get(slot)
+            if rem:
+                return "?", str(key)
         # not in registry: try catalog (user may ask a catalog model directly)
         matches = [(n, s) for n, s, _, _ in MODEL_CATALOG if n == key]
         if not matches:
@@ -372,6 +608,26 @@ class App:
             print(c("Usage: /w [model number or name] [question]", YELLOW))
             return
         key, question = parts
+        # /cpts routing: the remote API is the engine — its own host keeps
+        # per-key history, so we send ONLY the current question (no local
+        # ChatML context) and store the exchange under a dedicated
+        # "cpts#<slot>" chat key to keep local model histories clean.
+        slot = self.cpts.active
+        if slot:
+            # Forward the user's reference VERBATIM (usually a catalog/
+            # registry number like "01"). The remote host maps numbers to
+            # ITS OWN models and whitelists keys by number; translating
+            # through our local catalog would send a name the host may
+            # not have (e.g. we call #01 llama3.2:1b, host calls it mistral).
+            fwd = key
+            job = self.mgr.submit(slot, f"remote#{slot} ({key})", question,
+                                  self.tps, prompt_full=question,
+                                  chat=self.chat, user_turn_added=True,
+                                  key_owner=f"cpts#{slot}")
+            self.chat.add(f"cpts#{slot}", "user", question)
+            print(c(f"Job #{job.id} started → remote API #{slot} "
+                    f"[{fwd}] @ cap {self.tps:.1f} tok/s", GREEN))
+            return
         num, model_name = self._resolve_model(key)
         if not model_name:
             return
@@ -465,9 +721,25 @@ class App:
         print(c(msg, GREEN if ok else RED))
 
     def cmd_clear(self, rest):
-        """/clear [model] — reset chat history for one model or all."""
+        """/clear [model|all] — reset chat history for one model or all.
+
+        Also accepts 'cpts#N' to wipe the local mirror of a remote API's
+        conversation (see /cptsm for slot numbers).
+        """
         arg = rest.strip()
         if not arg:
+            self.chat.clear()
+            print(c("Chat history cleared for ALL models.", GREEN))
+            return
+        m = re.fullmatch(r"(?i)cpts#(\d+)", arg)
+        if m:
+            key = f"cpts#{m.group(1)}"
+            n = len(self.chat.history(key))
+            self.chat.clear(key)
+            print(c(f"Chat history cleared for remote API {key} "
+                    f"({n} message(s)).", GREEN))
+            return
+        if arg.lower() == "all":
             self.chat.clear()
             print(c("Chat history cleared for ALL models.", GREEN))
             return
@@ -688,6 +960,8 @@ class App:
                       "/dnm <github-url> | /dnmf <path> | /delm <name/#> | "
                       "/apis <01,02> <Y/N hist> <req/min> <slot#> | "
                       "/apim | /apioff <#> | /apion <#> | /apidel <#> | "
+                      "/cpts <SCA-key> [url] | /cptsm | /cptsuse <#> | "
+                      "/cptslocal | /cptsdel <#> | "
                       "/status | /stop <job id> | quit")
             elif head == "/models":
                 self.cmd_models()
@@ -741,6 +1015,16 @@ class App:
                 self.cmd_apion(arg)
             elif head == "/apidel":
                 self.cmd_apidel(arg)
+            elif head == "/cpts":
+                self.cmd_cpts(arg)
+            elif head == "/cptsm":
+                self.cmd_cptsm(arg)
+            elif head == "/cptsuse":
+                self.cmd_cptsuse(arg)
+            elif head == "/cptslocal":
+                self.cmd_cptslocal(arg)
+            elif head == "/cptsdel":
+                self.cmd_cptsdel(arg)
             elif head == "/stop":
                 found = False
                 for j in self.mgr.jobs:

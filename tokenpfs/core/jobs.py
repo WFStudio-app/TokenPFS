@@ -14,13 +14,17 @@ class Job:
     _id_lock = threading.Lock()
 
     def __init__(self, jid, number, model, prompt, tps, runner,
-                 prompt_full=None, chat=None):
+                 prompt_full=None, chat=None, key_owner=None):
         self.id = jid
         self.number = number      # "07"
         self.model = model
         self.prompt = prompt
         self.prompt_full = prompt_full or prompt   # ChatML context sent to Ollama
         self.chat = chat                           # ChatStore for history append
+        # when set (by /cpts remote jobs), the assistant turn is appended
+        # under this storage key instead of job.number ("?" would leak into
+        # the dashboard and mix histories of different remotes)
+        self.key_owner = key_owner
         self.tps = tps            # tokens per second target (cap)
         self.runner = runner      # callable(model, prompt, tps, on_token, stop_flag)
         self.state = "queued"     # queued | generating | done | error | stopped
@@ -64,14 +68,14 @@ class Manager:
         self._next_id = 1
 
     def submit(self, number, model, question, tps, prompt_full=None,
-               chat=None, user_turn_added=False) -> Job:
+               chat=None, user_turn_added=False, key_owner=None) -> Job:
         with self._lock:
             jid = self._next_id
             self._next_id += 1
         if prompt_full is None:
             prompt_full = question
         job = Job(jid, number, model, question, tps, self.runner,
-                  prompt_full=prompt_full, chat=chat)
+                  prompt_full=prompt_full, chat=chat, key_owner=key_owner)
         # register the user turn BEFORE launching the thread so a second
         # /w to the same model can never read a half-written history.
         # If the caller already built the prompt from the history *including*
@@ -124,14 +128,17 @@ class Manager:
                     job.answer = text
                     job.state = "done"
                     visible = text.strip()[:2000]
-                # append assistant turn to chat history (context memory)
-                if job.chat is not None and job.number not in ("?", ""):
+                # append assistant turn to chat history (context memory).
+                # key_owner (set by /cpts remote jobs) overrides the storage
+                # slot so remote answers don't pile up under the "?" bucket.
+                owner = job.key_owner or job.number
+                if job.chat is not None and owner not in ("?", ""):
                     if stopped:
                         if visible:
-                            job.chat.add(job.number, "assistant", visible +
+                            job.chat.add(owner, "assistant", visible +
                                          " [stopped by user]")
                     else:
-                        job.chat.add(job.number, "assistant", visible)
+                        job.chat.add(owner, "assistant", visible)
         except Exception as e:
             job.error = str(e)
             job.state = "error"

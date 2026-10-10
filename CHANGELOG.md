@@ -1,6 +1,7 @@
 ## [2.00.2-API.Beta.0] — 2026-10-10 (Network API)
 
 ### Added
+- **Remote APIs as engine (`/cpts`)**: `/cpts <SCA-key> [url]` registers *another person's* TokenPFS host after live verification (`/api/health` + key check via `/v1/models` — bad keys are never saved), then all `/w` questions route through `POST /v1/chat` of that host. Manage with `/cptsm` (list + ok/fail counters), `/cptsuse <n>`, `/cptslocal`, `/cptsdel <n>`. Remotes persist in `~/.tokenpfs/cpts.json`. Relay chains A→B→C supported (a host with an active remote forwards incoming API requests upstream). New module `tokenpfs/modules/cpts_api.py`; README section «📡 Remote APIs as your engine».
 - **Network API**: `/apis <models> <Y/N hist> <req/min> <slot#>` creates an `SCA-XXXX-XXXX-XXXX` key and hosts the chosen models over HTTP (auto-start on :8777, `TOKENPFS_API_HOST/PORT`). Endpoints: `/api/health`, `/v1/models`, `/v1/chat`, `/v1/generate`, `/v1/history?model=NN` (Y-keys only). Per-request temperature/top_p/max_tokens/num_ctx/seed overrides; proper 401/403/404/429/502 codes.
 - Key management: `/apim` monitor table, `/apioff <#>` / `/apion <#>` instant enable/disable, `/apidel <#>` delete. Keys persist in `~/.tokenpfs/api_keys.json`. README + banner + help updated.
 

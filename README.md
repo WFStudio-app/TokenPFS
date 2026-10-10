@@ -22,6 +22,7 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 | 🎛️ **Speed control** | `/stf <N>` sets how many tokens per second are produced for an answer |
 | 🧪 **Demo mode** | If Ollama is offline, everything still runs in simulated mode so you can learn the UX |
 | 🌐 **Network API** | `/apis` — host your local models over HTTP with `SCA-XXXX-XXXX-XXXX` keys, model whitelists, history toggle & rate limits |
+| 📡 **Remote APIs as engine** | `/cpts <SCA-key>` — use *someone else's* TokenPFS API as your generation backend; switch between remotes and back to local anytime |
 
 ---
 
@@ -105,6 +106,10 @@ Both questions were generated **in parallel**.
 | `/apim` | List/monitor your API keys and server status |
 | `/apioff <slot#>` / `/apion <slot#>` | Disable / re-enable one API key |
 | `/apidel <slot#>` | Delete an API key |
+| `/cpts <SCA-key> [url]` | Add a **remote** TokenPFS API (someone else's host) and route your questions through it |
+| `/cptsm` | List configured remote APIs + active routing |
+| `/cptsuse <n>` / `/cptslocal` | Switch routing to remote #n / back to local models |
+| `/cptsdel <n>` | Remove a remote API |
 | `help` / `quit` | Command list / exit (waits for running jobs up to 60 s) |
 
 ---
@@ -177,6 +182,51 @@ Environment variables:
 
 ---
 
+## 📡 Remote APIs as your engine — `/cpts` (Call People's TokenPFS Servers)
+
+The flip side of `/apis`: if **another person** hosts TokenPFS and gave you a
+key (`SCA-XXXX-XXXX-XXXX`), you can use *their* models as if they were yours —
+no download, no hardware needed on your side.
+
+```
+tokenpfs> /cpts SCA-ABCD-EFGH-JKMN http://192.168.1.40:8777
+Remote API #1 added and ACTIVATED:
+   URL      : http://192.168.1.40:8777
+   Key      : SCA-ABCD-EFGH-JKMN
+   Server   : TokenPFS 2.0.2-API.Beta.0
+   Models   : qwen2.5:0.5b, llama3.2:1b
+From now on /w questions go through this remote API. Switch back to local models with /cptslocal.
+```
+
+What happens under the hood:
+
+- On `/cpts` TokenPFS **verifies before saving**: pings `/api/health` (must be
+  a real TokenPFS server), then checks the key against `/v1/models`
+  (bad/disabled key → `401`, never saved). Only a working pair gets stored.
+- Every `/w <model> <question>` is then sent as `POST /v1/chat` with your
+  Bearer key; the answer streams into the normal dashboard/result format.
+  The hoster's model whitelist and rate limit apply automatically.
+- Remotes persist in `~/.tokenpfs/cpts.json` together with per-remote call
+  statistics (`ok/fail/last status` — visible in `/cptsm`).
+
+Management commands:
+
+| Command | Effect |
+|---|---|
+| `/cptsm` | list all remotes, mark the active one `[>>]`, show counters |
+| `/cptsuse 2` | route through remote #2 |
+| `/cptslocal` | stop routing — back to your own Ollama/demo |
+| `/cptsdel 1` | delete remote #1 (active slot falls back to local) |
+
+Chaining works too: a host that itself has an active `/cpts` remote forwards
+incoming `/v1/chat` requests upstream, so A→B→C relay chains are possible.
+
+⚠️ Your question text leaves your machine to the remote host — only add keys
+from people/servers you trust. HTTP traffic is unencrypted by default; ask
+large providers for TLS or use an SSH tunnel.
+
+---
+
 ## 🗂️ Project structure
 
 ```
@@ -189,7 +239,9 @@ TokenPFS/
     │   ├── registry.py       # [01],[02]... numbering after download
     │   └── jobs.py           # parallel generation manager + status lines
     ├── modules/
-    │   └── ollama_api.py     # Ollama HTTP client (pull/generate/tags)
+    │   ├── ollama_api.py     # Ollama HTTP client (pull/generate/tags)
+    │   ├── api_server.py     # /apis — host local models over HTTP (SCA keys)
+    │   └── cpts_api.py       # /cpts — client for remote TokenPFS APIs
     └── utils/
         └── colors.py         # ANSI colors + startup banner
 ```
