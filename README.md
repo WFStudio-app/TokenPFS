@@ -64,7 +64,7 @@ python3 tokenpfs_app.py
 ### Typical session
 
 ```text
-tokenpfs> /models            # show the catalog of 20 models
+tokenpfs> /models            # show the catalog of 90 models
 tokenpfs> /dl 2              # pick catalog №2 → Download [qwen2.5:0.5b]? Y/n
    downloading qwen2.5:0.5b: [########                  ]  32.4%
 Model ready: [01] qwen2.5:0.5b     ← number assigned right after download!
@@ -95,7 +95,7 @@ Both questions were generated **in parallel**.
 
 | Command | What it does |
 |---|---|
-| `/models` | Catalog of 20 available local models with sizes |
+| `/models` | Catalog of 90 available local models with sizes |
 | `/dl <catalog №>` | Download a model (`Download [name]? Y/n`), assigns `[NN]` number |
 | `/list` | Downloaded models with their numbers |
 | `/w <model/name> <question>` | Ask a question; multiple jobs run in parallel |

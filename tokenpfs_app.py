@@ -2,7 +2,7 @@
 """TokenPFS — local token factory for Ollama models on Termux.
 
 Flow:
-  1) pick from a catalog of 20 local models
+  1) pick from a catalog of 90 local models
   2) Download [model]? Y/n -> pull via Ollama, model gets number [01],[02]...
   3) /w [model#] [question]  ask (several questions to different models run
      in parallel)
