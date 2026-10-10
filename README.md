@@ -113,6 +113,7 @@ Both questions were generated **in parallel**.
 | `/hf <query>` | Search **Hugging Face** for GGUF text-generation models, pick one, download & register in Ollama (`hf/...` name, numbered `[NN]`) |
 | `/hfd <query>` | Browse the Hugging Face **dataset database**: search datasets, list data files (.parquet/.jsonl/.csv), download any into `~/.servercloud/datasets/` |
 | `/hftok [token]` | Set a Hugging Face token for gated/private repos (or export `SERVERCLOUD_HF_TOKEN`) |
+| `/agent [model]` | Launch the **ServerCloud coding agent** — autonomous tool-using assistant on your local models (read/edit files, bash, web, GitHub) |
 | `help` / `quit` | Command list / exit (waits for running jobs up to 60 s) |
 
 ---
@@ -253,6 +254,31 @@ large providers for TLS or use an SSH tunnel.
 
 ---
 
+## 🤖 Coding agent — `/agent` (servercloud/agent)
+
+Autonomous assistant built on your **local** models (Ollama, tool-calling with
+JSON-mode fallback for models that don't support native tools). It can read /
+create / patch files inside a sandboxed working dir, run bash commands, fetch
+web pages and talk to GitHub (issues/PRs) — every file edit, shell command and
+GitHub write requires confirmation unless you pass `--auto-edit` / `--yolo`.
+
+```
+servercloud> /agent                       # default model qwen2.5-coder:1.5b
+servercloud> /agent qwen2.5-coder:7b      # pick any downloaded coder model
+agent> find the bug in main.py and fix it
+agent> /tools        # list available tools
+agent> /ghtoken      # hidden input -> ~/.servercloud/github_token (chmod 600)
+agent> /ghcheck      # verify token (GET /user)
+agent> /exit         # back to ServerCloud REPL
+```
+
+Standalone (no REPL): `python3 -m servercloud.agent "task" -d ~/myproj -m qwen2.5-coder:3b`.
+Security notes: web fetch blocks localhost/LAN, paths are jailed to the working
+dir, tokens are redacted from all model-visible output, untrusted web/issue
+text is marked against prompt injection. Full details: `AGENT_README.md`.
+
+---
+
 ## 🗂️ Project structure
 
 ```
@@ -269,6 +295,13 @@ ServerCloud/
     │   ├── api_server.py     # /apis — host local models over HTTP (SCA keys)
     │   ├── cpts_api.py       # /cpts — client for remote ServerCloud APIs
     │   └── huggingface_api.py# /hf /hfd — HF model & dataset database access
+    ├── agent/                # /agent — autonomous coding agent (tool calling)
+    │   ├── cli.py            # REPL + standalone entry (python -m servercloud.agent)
+    │   ├── loop.py           # think -> tool -> observe cycle
+    │   ├── tools.py          # files/bash/web/github tools (sandboxed)
+    │   ├── llm.py            # Ollama /api/chat client, JSON-mode fallback
+    │   ├── permissions.py    # confirm-before-write policy
+    │   └── config.py         # ~/.servercloud data dir, GH token storage
     └── utils/
         └── colors.py         # ANSI colors + startup banner
 ```

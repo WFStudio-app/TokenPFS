@@ -1,3 +1,8 @@
+## [Unreleased] — ServerCloud Agent
+
+- **Coding agent (`/agent [model]`)**: new package `servercloud/agent/` (integrated from `servercloud-agent.zip`). Autonomous tool-calling loop on local Ollama models with JSON-mode fallback for non-tool models: read/create/patch files in a sandboxed workdir, bash, web fetch (localhost/LAN blocked), GitHub issues/PRs via fine-grained token (`/ghtoken` hidden input -> `~/.servercloud/github_token` chmod 600, redacted from all model-visible output). File edits/bash/GitHub writes require confirmation (`--auto-edit`/`--yolo` to relax). Standalone: `python3 -m servercloud.agent "task" -d ~/proj -m qwen2.5-coder:3b`. See `AGENT_README.md`.
+- Fixed legacy env names inside the agent config (`TOKENPFS_HOME`/`TOKENPFS_OLLAMA_URL` -> `SERVERCLOUD_DATA`/`SERVERCLOUD_OLLAMA_URL`, old names still honoured as fallback).
+
 ## [Unreleased] — Hugging Face integration
 
 - **Hugging Face model downloads (`/hf <query>`)**: searches huggingface.co text-generation repos with GGUF quantizations, shows real total sizes (multi-part shards merged), streams the chosen `.gguf` into `~/.servercloud/custom/`, registers it in Ollama via generated Modelfile (or registry-only when offline) and numbers it `[NN]` like any other model. Pure stdlib — no `huggingface_hub` dependency.

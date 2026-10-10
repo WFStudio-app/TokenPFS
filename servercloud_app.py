@@ -1039,6 +1039,30 @@ class App:
                 pass
         print(c(f"Deleted [{num}] {entry['name']}{removed_ollama}", GREEN))
 
+    def cmd_agent(self, arg=""):
+        """Launch the ServerCloud coding agent (servercloud/agent package)."""
+        try:
+            import argparse as _ap
+            from servercloud.agent.cli import run_repl
+            from servercloud.agent.config import DEFAULT_MODEL
+        except ImportError as e:
+            print(c(f"Agent package missing ({e}). "
+                    "Extract servercloud-agent.zip into the repo root.", RED))
+            return
+        model = arg.strip() or DEFAULT_MODEL
+        print(c(f"Starting ServerCloud Agent with model '{model}'. "
+                "Type /help for agent commands, /exit to return.", MAGENTA))
+        ns = _ap.Namespace(
+            model=model, dir=os.getcwd(),
+            url=ollama_api.base_url(),
+            auto_edit=False, yolo=False, no_bash=False, no_web=False,
+            max_steps=15)
+        try:
+            run_repl(ns)
+        except Exception as e:                       # noqa: BLE001
+            print(c(f"Agent error: {e}", RED))
+        print(c("Back to ServerCloud.", GREEN))
+
     def status_loop(self, stop_event):
         last_print = 0.0
         while not stop_event.is_set():
@@ -1096,6 +1120,7 @@ class App:
                       "/apim | /apioff <#> | /apion <#> | /apidel <#> | "
                       "/cpts <SCA-key> [url] | /cptsm | /cptsuse <#> | "
                       "/cptslocal | /cptsdel <#> | "
+                      "/agent [model] (coding agent) | "
                       "/status | /stop <job id> | quit")
             elif head == "/models":
                 self.cmd_models()
@@ -1165,6 +1190,8 @@ class App:
                 self.cmd_cptslocal(arg)
             elif head == "/cptsdel":
                 self.cmd_cptsdel(arg)
+            elif head == "/agent":
+                self.cmd_agent(arg)
             elif head == "/stop":
                 found = False
                 for j in self.mgr.jobs:
