@@ -1,4 +1,4 @@
-"""Catalog of 90 local models available through Ollama.
+"""Catalog of 120 local models available through Ollama.
 
 Each model gets a sequential number [01], [02], ... assigned right after
 it is downloaded on the device (not from this catalog).
@@ -101,6 +101,37 @@ MODEL_CATALOG = [
     ("deepseek-r1:distill-qwen-1.5b", 1.1, "DeepSeek","R1 distilled into Qwen tiny"),
     ("deepseek-v2:16b",          8.4, "DeepSeek","MLA arch mid-size"),
     ("deepseek-r1:671b",        365.0, "DeepSeek","Full R1 frontier MoE"),
+    # ---- Qwen family (full sweep) ----
+    ("qwen:7b",                  4.4, "Qwen",     "Original Qwen 1.0 classic"),
+    ("qwen:14b",                10.1, "Qwen",     "Original Qwen 1.0 mid"),
+    ("qwen:32b",                20.0, "Qwen",     "Original Qwen 1.0 heavy"),
+    ("qwen:72b",                 41.0, "Qwen",    "Original Qwen 1.0 flagship"),
+    ("qwen2:0.5b",               0.4, "Qwen2",    "Gen-2 tiny"),
+    ("qwen2:1.5b",               1.0, "Qwen2",    "Gen-2 light"),
+    ("qwen2:7b",                 4.4, "Qwen2",    "Gen-2 solid 7B"),
+    ("qwen2:72b",               39.0, "Qwen2",    "Gen-2 dense giant"),
+    ("qwen2.5:1.5b",             1.0, "Qwen",     "Small multilingual chat"),
+    ("qwen2.5:14b",              8.9, "Qwen",     "Balanced mid-size"),
+    ("qwen2.5-coder:1.5b",       1.2, "Qwen",     "Tiny coder"),
+    ("qwen2.5-coder:7b",         4.7, "Qwen",     "Light coding specialist"),
+    ("qwen2.5-coder:14b",        8.9, "Qwen",     "Mid coder"),
+    ("qwen2.5-coder:next:80b",  33.0, "Qwen",     "Next-gen hybrid coder, server class"),
+    ("qwen2.5-vl:3b",            3.4, "Qwen-VL",  "Vision-language small"),
+    ("qwen2.5-vl:7b",            5.9, "Qwen-VL",  "Vision-language 7B"),
+    ("qwen2.5-vl:32b",          21.2, "Qwen-VL",  "Vision-language heavy"),
+    ("qwen2.5-vl:72b",          38.0, "Qwen-VL",  "Vision-language giant"),
+    ("qwen2.5-math:1.5b",        1.1, "Qwen-Math","Math-tuned tiny"),
+    ("qwen2.5-math:7b",          4.5, "Qwen-Math","Math-tuned 7B"),
+    ("qwen2.5-math:72b",        39.0, "Qwen-Math","Math-tuned flagship"),
+    ("qwq:32b-preview",         19.8, "QwQ",      "Preview reasoning build"),
+    ("qwen3:1.7b",               1.4, "Qwen3",    "Tiny reasoning hybrid"),
+    ("qwen3:14b",                9.3, "Qwen3",    "Hybrid thinking 14B"),
+    ("qwen3:30b-a3b",           18.6, "Qwen3 MoE","MoE 30B / 3B active"),
+    ("qwen3:32b",               19.8, "Qwen3",    "Dense flagship 32B"),
+    ("qwen3-coder:30b-a3b",     18.6, "Qwen3 MoE","Agentic coding MoE"),
+    ("qwen3-coder:480b-a35b",  270.0, "Qwen3 MoE","Frontier coder, cluster class"),
+    ("qwen3-vl:8b",              6.0, "Qwen-VL",  "Newest vision-language 8B"),
+    ("qwen3-max:cloudless",     12.0, "Qwen3",    "Max-line distilled local"),
 ]
 
 HEAVY_THRESHOLD_GB = 16.0   # models above this need >16 GB free SSD

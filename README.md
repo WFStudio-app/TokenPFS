@@ -12,7 +12,7 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 
 | Feature | Description |
 |---|---|
-| 🧠 **90 local models** | Small → frontier class (Llama, Qwen, Phi, Gemma, DeepSeek…), 0.4 GB … 594 GB; `/bmc` shows 25 GB+ giants |
+| 🧠 **120 local models** | Small → frontier class (Llama, Qwen, Phi, Gemma, DeepSeek…), 0.4 GB … 594 GB; `/bmc` shows 25 GB+ giants |
 | 🔢 **Model numbering** | Every downloaded model gets a number right after install: `[01]`, `[02]`, … |
 | ⚙️ **Ollama engine** | Real inference through the Ollama HTTP API (`ollama serve`) — or remote host via `TOKENPFS_OLLAMA_URL` |
 | 🪟 **Download confirm** | `Download [model]? Y/n` + live progress bar while pulling weights |
@@ -64,7 +64,7 @@ python3 tokenpfs_app.py
 ### Typical session
 
 ```text
-tokenpfs> /models            # show the catalog of 90 models
+tokenpfs> /models            # show the catalog of 120 models
 tokenpfs> /dl 2              # pick catalog №2 → Download [qwen2.5:0.5b]? Y/n
    downloading qwen2.5:0.5b: [########                  ]  32.4%
 Model ready: [01] qwen2.5:0.5b     ← number assigned right after download!
@@ -95,7 +95,7 @@ Both questions were generated **in parallel**.
 
 | Command | What it does |
 |---|---|
-| `/models` | Catalog of 90 available local models with sizes |
+| `/models` | Catalog of 120 available local models with sizes |
 | `/dl <catalog №>` | Download a model (`Download [name]? Y/n`), assigns `[NN]` number |
 | `/list` | Downloaded models with their numbers |
 | `/w <model/name> <question>` | Ask a question; multiple jobs run in parallel |
@@ -235,7 +235,7 @@ TokenPFS/
 └── tokenpfs/
     ├── core/
     │   ├── version.py        # X.X.X versioning algorithm + bump()
-    │   ├── models.py         # catalog of 90 local models (incl. 25 GB+ giants)
+    │   ├── models.py         # catalog of 120 local models (incl. 25 GB+ giants)
     │   ├── registry.py       # [01],[02]... numbering after download
     │   └── jobs.py           # parallel generation manager + status lines
     ├── modules/

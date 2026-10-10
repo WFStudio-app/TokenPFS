@@ -204,7 +204,7 @@ class App:
         bad = [m for m in models if not _valid_ref(m)]
         if bad:
             print(c(f"Unknown model references: {', '.join(bad)}. "
-                    f"Use registry/catalog numbers (01..90), exact names, "
+                    f"Use registry/catalog numbers (01..120), exact names, "
                     f"or remote APIs as #N (see /cptsm).", RED))
             return
         # history flag
