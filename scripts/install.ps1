@@ -1,13 +1,13 @@
-# TokenPFS — one-click auto installer for Windows 10/11 (PowerShell)
+# ServerCloud — one-click auto installer for Windows 10/11 (PowerShell)
 # Usage (in a normal PowerShell window):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
 # or from the web:
-#   iwr -useb https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.ps1 | iex
+#   iwr -useb https://raw.githubusercontent.com/WFStudio-app/ServerCloud/main/scripts/install.ps1 | iex
 $ErrorActionPreference = "Stop"
-$Repo    = "https://github.com/WFStudio-app/TokenPFS.git"
-$InstallDir = Join-Path $env:USERPROFILE ".tokenpfs\TokenPFS"
+$Repo    = "https://github.com/WFStudio-app/ServerCloud.git"
+$InstallDir = Join-Path $env:USERPROFILE ".servercloud\ServerCloud"
 
-Write-Host "== TokenPFS installer (Windows) ==" -ForegroundColor Cyan
+Write-Host "== ServerCloud installer (Windows) ==" -ForegroundColor Cyan
 
 # --- 1. Python ---------------------------------------------------------------
 # On clean Win10/11 "python" is often only the Microsoft Store stub (opens the
@@ -79,38 +79,38 @@ if (Get-Command ollama -ErrorAction SilentlyContinue) {
     Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
     Start-Sleep -Seconds 3
 } else {
-    Write-Host "[!] Continuing without Ollama — TokenPFS will run in DEMO mode." -ForegroundColor Yellow
+    Write-Host "[!] Continuing without Ollama — ServerCloud will run in DEMO mode." -ForegroundColor Yellow
 }
 
-# --- 4. TokenPFS source ---------------------------------------------------------
-New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE ".tokenpfs") | Out-Null
+# --- 4. ServerCloud source ---------------------------------------------------------
+New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE ".servercloud") | Out-Null
 if (Test-Path (Join-Path $InstallDir ".git")) {
     Write-Host "[i] Updating existing installation (git pull)..." -ForegroundColor Yellow
     & git -C $InstallDir pull --ff-only
 } else {
-    Write-Host "[i] Cloning TokenPFS to $InstallDir ..." -ForegroundColor Yellow
+    Write-Host "[i] Cloning ServerCloud to $InstallDir ..." -ForegroundColor Yellow
     & git clone --depth 1 $Repo $InstallDir
 }
 
-# --- 5. Launcher 'tokenpfs' command ---------------------------------------------
-$bin = Join-Path $env:USERPROFILE ".tokenpfs\bin"
+# --- 5. Launcher 'servercloud' command ---------------------------------------------
+$bin = Join-Path $env:USERPROFILE ".servercloud\bin"
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-$cmd = Join-Path $bin "tokenpfs.cmd"
+$cmd = Join-Path $bin "servercloud.cmd"
 @"
 @echo off
 rem UTF-8 codepage + PYTHONUTF8: prevents UnicodeEncodeError on Cyrillic/box chars
 chcp 65001 >nul
 set PYTHONUTF8=1
-"$PYEXE" "$InstallDir\tokenpfs_app.py" %*
+"$PYEXE" "$InstallDir\servercloud_app.py" %*
 "@ | Set-Content -Path $cmd -Encoding ASCII
 
 $userPath = [System.Environment]::GetEnvironmentVariable("Path","User")
 if ($userPath -notlike "*$bin*") {
     [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$bin", "User")
-    Write-Host "[ok] Added $bin to user PATH (reopen terminal to use 'tokenpfs')." -ForegroundColor Green
+    Write-Host "[ok] Added $bin to user PATH (reopen terminal to use 'servercloud')." -ForegroundColor Green
 }
 
 Write-Host ""
 Write-Host "== Installation complete ==" -ForegroundColor Green
-Write-Host "Run:  tokenpfs     (after reopening the terminal)"
-Write-Host "  or: $PYEXE `"$InstallDir\tokenpfs_app.py`""
+Write-Host "Run:  servercloud     (after reopening the terminal)"
+Write-Host "  or: $PYEXE `"$InstallDir\servercloud_app.py`""

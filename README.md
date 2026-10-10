@@ -1,4 +1,4 @@
-# TokenPFS ⚡
+# ServerCloud ⚡
 
 **Local token factory — run 20 local LLMs on any hardware via Ollama. Built for Termux.**
 
@@ -22,62 +22,62 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 | 🎛️ **Speed control** | `/stf <N>` sets how many tokens per second are produced for an answer |
 | 🧪 **Demo mode** | If Ollama is offline, everything still runs in simulated mode so you can learn the UX |
 | 🌐 **Network API** | `/apis` — host your local models over HTTP with `SCA-XXXX-XXXX-XXXX` keys, model whitelists, history toggle & rate limits |
-| 📡 **Remote APIs as engine** | `/cpts <SCA-key>` — use *someone else's* TokenPFS API as your generation backend; switch between remotes and back to local anytime |
+| 📡 **Remote APIs as engine** | `/cpts <SCA-key>` — use *someone else's* ServerCloud API as your generation backend; switch between remotes and back to local anytime |
 
 ---
 
 ## ⚡ One-click install (recommended)
 
-Auto-installer for **Linux, Termux, macOS and VPS/cloud servers** (headless over SSH): detects your package manager (apt/dnf/yum/pacman/zypper/apk), installs Python/Git/Ollama, clones the repo and creates a `tokenpfs` command:
+Auto-installer for **Linux, Termux, macOS and VPS/cloud servers** (headless over SSH): detects your package manager (apt/dnf/yum/pacman/zypper/apk), installs Python/Git/Ollama, clones the repo and creates a `servercloud` command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/WFStudio-app/ServerCloud/main/scripts/install.sh | bash
 # then open a new terminal and run:
-tokenpfs
+servercloud
 ```
 
 **Windows 10/11** — in PowerShell:
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/WFStudio-app/ServerCloud/main/scripts/install.ps1 | iex
 # reopen the terminal and run:
-tokenpfs
+servercloud
 ```
 
-**VPS / cloud server** — same Linux one-liner works over SSH as root (`ssh root@your-vps` → paste command). `/autt` inside TokenPFS shows detected platform and virtualization class.
+**VPS / cloud server** — same Linux one-liner works over SSH as root (`ssh root@your-vps` → paste command). `/autt` inside ServerCloud shows detected platform and virtualization class.
 
 ## 🚀 Manual quick start (Termux)
 
 ```bash
 pkg update && pkg upgrade
 pkg install python ollama git
-git clone https://github.com/WFStudio-app/TokenPFS.git
-cd TokenPFS
+git clone https://github.com/WFStudio-app/ServerCloud.git
+cd ServerCloud
 
 # start the inference server (keep it running)
 ollama serve &
 
-# start TokenPFS
-python3 tokenpfs_app.py
+# start ServerCloud
+python3 servercloud_app.py
 ```
 
 ### Typical session
 
 ```text
-tokenpfs> /models            # show the catalog of 120 models
-tokenpfs> /dl 2              # pick catalog №2 → Download [qwen2.5:0.5b]? Y/n
+servercloud> /models            # show the catalog of 120 models
+servercloud> /dl 2              # pick catalog №2 → Download [qwen2.5:0.5b]? Y/n
    downloading qwen2.5:0.5b: [########                  ]  32.4%
 Model ready: [01] qwen2.5:0.5b     ← number assigned right after download!
 
-tokenpfs> /dl 1
+servercloud> /dl 1
 Download [llama3.2:1b]? Y n… y
 Model ready: [02] llama3.2:1b
 
-tokenpfs> /stf 15            # generate ~15 tokens per second
+servercloud> /stf 15            # generate ~15 tokens per second
 
-tokenpfs> /w 01 What is a MAC address?
+servercloud> /w 01 What is a MAC address?
 Job #1 started → [01] qwen2.5:0.5b @ 15.0 tok/s
-tokenpfs> /w 02 Explain NAT briefly
+servercloud> /w 02 Explain NAT briefly
 Job #2 started → [02] llama3.2:1b @ 15.0 tok/s
 
   ⚙ [qwen2.5:0.5b] [generating (48 tok)] [14.9 tok/s] [ready in 31s]
@@ -106,7 +106,7 @@ Both questions were generated **in parallel**.
 | `/apim` | List/monitor your API keys and server status |
 | `/apioff <slot#>` / `/apion <slot#>` | Disable / re-enable one API key |
 | `/apidel <slot#>` | Delete an API key |
-| `/cpts <SCA-key> [url]` | Add a **remote** TokenPFS API (someone else's host) and route your questions through it |
+| `/cpts <SCA-key> [url]` | Add a **remote** ServerCloud API (someone else's host) and route your questions through it |
 | `/cptsm` | List configured remote APIs + active routing |
 | `/cptsuse <n>` / `/cptslocal` | Switch routing to remote #n / back to local models |
 | `/cptsdel <n>` | Remove a remote API |
@@ -116,14 +116,14 @@ Both questions were generated **in parallel**.
 
 ## 🌐 Network API — host your local models (`/apis`)
 
-TokenPFS can expose selected local models over HTTP so **other devices on your
+ServerCloud can expose selected local models over HTTP so **other devices on your
 LAN/WAN can query them** using per-key authentication, model whitelists,
 optional dialog-history access and a requests-per-minute cap.
 
 ### Create a key
 
 ```
-tokenpfs> /apis 01,02,03 Y 60 1
+servercloud> /apis 01,02,03 Y 60 1
 API key #1 created:
    Key        : SCA-ABCD-EFGH-JKMN
    Models     : 01, 02, 03      <- only these numbers are reachable via this key
@@ -168,7 +168,7 @@ curl -X POST http://YOUR-HOST:8777/v1/chat \
 ```
 
 Server address/port: env `TOKENPFS_API_HOST` (default `0.0.0.0`) and
-`TOKENPFS_API_PORT` (default `8777`). Keys persist in `~/.tokenpfs/api_keys.json`.
+`TOKENPFS_API_PORT` (default `8777`). Keys persist in `~/.servercloud/api_keys.json`.
 ⚠️ The API is plain HTTP — intended for trusted LANs; put it behind SSH tunnel /
 reverse-proxy with TLS for public exposure.
 
@@ -177,36 +177,36 @@ Environment variables:
 | Variable | Default | Meaning |
 |---|---|---|
 | `TOKENPFS_OLLAMA_URL` | `http://127.0.0.1:11434` | Point to a local or remote Ollama server |
-| `TOKENPFS_HOME` | `~/.tokenpfs` | Where the numbered-model registry is stored |
+| `TOKENPFS_HOME` | `~/.servercloud` | Where the numbered-model registry is stored |
 | `NO_COLOR` | – | Disable ANSI colors |
 
 ---
 
-## 📡 Remote APIs as your engine — `/cpts` (Call People's TokenPFS Servers)
+## 📡 Remote APIs as your engine — `/cpts` (Call People's ServerCloud Servers)
 
-The flip side of `/apis`: if **another person** hosts TokenPFS and gave you a
+The flip side of `/apis`: if **another person** hosts ServerCloud and gave you a
 key (`SCA-XXXX-XXXX-XXXX`), you can use *their* models as if they were yours —
 no download, no hardware needed on your side.
 
 ```
-tokenpfs> /cpts SCA-ABCD-EFGH-JKMN http://192.168.1.40:8777
+servercloud> /cpts SCA-ABCD-EFGH-JKMN http://192.168.1.40:8777
 Remote API #1 added and ACTIVATED:
    URL      : http://192.168.1.40:8777
    Key      : SCA-ABCD-EFGH-JKMN
-   Server   : TokenPFS 2.0.2-API.Beta.0
+   Server   : ServerCloud 2.0.2-API.Beta.0
    Models   : qwen2.5:0.5b, llama3.2:1b
 From now on /w questions go through this remote API. Switch back to local models with /cptslocal.
 ```
 
 What happens under the hood:
 
-- On `/cpts` TokenPFS **verifies before saving**: pings `/api/health` (must be
-  a real TokenPFS server), then checks the key against `/v1/models`
+- On `/cpts` ServerCloud **verifies before saving**: pings `/api/health` (must be
+  a real ServerCloud server), then checks the key against `/v1/models`
   (bad/disabled key → `401`, never saved). Only a working pair gets stored.
 - Every `/w <model> <question>` is then sent as `POST /v1/chat` with your
   Bearer key; the answer streams into the normal dashboard/result format.
   The hoster's model whitelist and rate limit apply automatically.
-- Remotes persist in `~/.tokenpfs/cpts.json` together with per-remote call
+- Remotes persist in `~/.servercloud/cpts.json` together with per-remote call
   statistics (`ok/fail/last status` — visible in `/cptsm`).
 
 Management commands:
@@ -230,9 +230,9 @@ large providers for TLS or use an SSH tunnel.
 ## 🗂️ Project structure
 
 ```
-TokenPFS/
-├── tokenpfs_app.py           # entry point (REPL + live dashboard thread)
-└── tokenpfs/
+ServerCloud/
+├── servercloud_app.py           # entry point (REPL + live dashboard thread)
+└── servercloud/
     ├── core/
     │   ├── version.py        # X.X.X versioning algorithm + bump()
     │   ├── models.py         # catalog of 120 local models (incl. 25 GB+ giants)
@@ -241,7 +241,7 @@ TokenPFS/
     ├── modules/
     │   ├── ollama_api.py     # Ollama HTTP client (pull/generate/tags)
     │   ├── api_server.py     # /apis — host local models over HTTP (SCA keys)
-    │   └── cpts_api.py       # /cpts — client for remote TokenPFS APIs
+    │   └── cpts_api.py       # /cpts — client for remote ServerCloud APIs
     └── utils/
         └── colors.py         # ANSI colors + startup banner
 ```
@@ -262,7 +262,7 @@ TokenPFS/
 
 **Is this legal / free?** Yes — Ollama runs open-weight models entirely on your device; no cloud, no API keys.
 
-**Why "demo mode"?** If `ollama serve` isn't running, TokenPFS simulates generation so you can try the interface. Start Ollama for real answers.
+**Why "demo mode"?** If `ollama serve` isn't running, ServerCloud simulates generation so you can try the interface. Start Ollama for real answers.
 
 **Which model should I pick on a phone?** `qwen2.5:0.5b` (~0.4 GB) or `tinyllama:1.1b` — fastest on Termux.
 

@@ -2,9 +2,9 @@
 import os, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tokenpfs.core.options import GenOptions
-from tokenpfs.core.chatml import ChatStore
-from tokenpfs.core.jobs import Manager
+from servercloud.core.options import GenOptions
+from servercloud.core.chatml import ChatStore
+from servercloud.core.jobs import Manager
 
 
 class TestOptScope(unittest.TestCase):
@@ -73,7 +73,7 @@ class TestNoDoubleUserTurn(unittest.TestCase):
 
 class TestDemoPromptExtraction(unittest.TestCase):
     def test_last_user_turn_extracted(self):
-        from tokenpfs_app import App
+        from servercloud_app import App
         blob = ("<|im_start|>system\nроль<|im_end|>\n"
                 "<|im_start|>user\nпервый<|im_end|>\n"
                 "<|im_start|>assistant\nответ<|im_end|>\n"

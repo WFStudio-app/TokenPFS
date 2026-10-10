@@ -1,9 +1,9 @@
 """Regression tests: chat context, system prompt, gen options, real metrics, DEMO label."""
 import os, sys, time, unittest, threading
 sys.path.insert(0, '.')
-from tokenpfs.core.chatml import ChatStore
-from tokenpfs.core.options import GenOptions
-from tokenpfs.core.jobs import Manager
+from servercloud.core.chatml import ChatStore
+from servercloud.core.options import GenOptions
+from servercloud.core.jobs import Manager
 
 
 def _tmp_store():

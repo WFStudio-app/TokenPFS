@@ -1,4 +1,4 @@
-"""CPTS — client for *other people's* TokenPFS network APIs.
+"""CPTS — client for *other people's* ServerCloud network APIs.
 
 With /cpts <SCA-key> you register a remote hoster's API key and then route
 your questions there instead of (or in addition to) your local Ollama:
@@ -8,8 +8,8 @@ your questions there instead of (or in addition to) your local Ollama:
     /cptsuse <n> | /cptslocal         switch routing on/off
     /cptsdel <n>                      remove a remote
 
-The remote speaks the same protocol as tokenpfs/modules/api_server.py:
-  GET  /api/health            -> {"ok":true,"app":"TokenPFS",...}
+The remote speaks the same protocol as servercloud/modules/api_server.py:
+  GET  /api/health            -> {"ok":true,"app":"ServerCloud",...}
   GET  /v1/models             -> {"models":[...]}          (Bearer key)
   POST /v1/chat               -> {"response":"..."}       (Bearer key)
 Auth header: Authorization: Bearer SCA-XXXX-XXXX-XXXX
@@ -31,7 +31,7 @@ def validate_key(key: str) -> bool:
 
 
 class CptsStore:
-    """Persistent list of remote TokenPFS API endpoints."""
+    """Persistent list of remote ServerCloud API endpoints."""
 
     def __init__(self, path):
         self.path = path
@@ -102,7 +102,7 @@ def _now():
 
 
 class CptsClient:
-    """Minimal HTTP client for a remote TokenPFS API."""
+    """Minimal HTTP client for a remote ServerCloud API."""
 
     def __init__(self, url, key, timeout=120):
         self.url = url.rstrip("/")
@@ -127,7 +127,7 @@ class CptsClient:
 
     # ---------- public API ----------
     def health(self):
-        """Ping without auth — verifies it is really a TokenPFS API."""
+        """Ping without auth — verifies it is really a ServerCloud API."""
         info = self._get("/api/health", timeout=10)
         return info
 

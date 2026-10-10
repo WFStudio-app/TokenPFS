@@ -18,7 +18,7 @@ class ChatStore:
     """Thread-safe store of histories and system prompts."""
 
     def __init__(self, path=None):
-        self.path = path or os.path.expanduser("~/.tokenpfs/chat.json")
+        self.path = path or os.path.expanduser("~/.servercloud/chat.json")
         self._lock = threading.Lock()
         self.histories = {}   # number -> [{"role","content"}, ...]
         self.system = {}      # number|"all" -> prompt text

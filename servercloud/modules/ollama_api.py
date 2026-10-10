@@ -1,7 +1,7 @@
 """Ollama HTTP client (works on Termux via pkg install ollama / or remote host).
 
 Uses only the standard library. Base URL configurable through env
-TOKENPFS_OLLAMA_URL (default http://127.0.0.1:11434).
+SERVERCLOUD_OLLAMA_URL (default http://127.0.0.1:11434).
 """
 
 import json
@@ -13,7 +13,7 @@ DEFAULT_URL = "http://127.0.0.1:11434"
 
 
 def base_url() -> str:
-    return os.environ.get("TOKENPFS_OLLAMA_URL", DEFAULT_URL).rstrip("/")
+    return os.environ.get("SERVERCLOUD_OLLAMA_URL", DEFAULT_URL).rstrip("/")
 
 
 def _request(path: str, payload=None, timeout=30):

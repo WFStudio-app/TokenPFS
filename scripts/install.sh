@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
-#  TokenPFS — one-click auto installer
-#  Usage: curl -fsSL https://raw.githubusercontent.com/WFStudio-app/TokenPFS/main/scripts/install.sh | bash
+#  ServerCloud — one-click auto installer
+#  Usage: curl -fsSL https://raw.githubusercontent.com/WFStudio-app/ServerCloud/main/scripts/install.sh | bash
 #  Supports: Linux (apt/dnf/pacman/zypper), Termux (Android), macOS (Homebrew),
 #            VPS/cloud servers over SSH (headless, no desktop needed)
 #  Windows users: use scripts/install.ps1 instead (PowerShell).
 # ============================================================
 set -e
 
-REPO_URL="https://github.com/WFStudio-app/TokenPFS.git"
-INSTALL_DIR="${TOKENPFS_HOME:-$HOME/.tokenpfs/TokenPFS}"
+REPO_URL="https://github.com/WFStudio-app/ServerCloud.git"
+INSTALL_DIR="${SERVERCLOUD_HOME:-$HOME/.servercloud/ServerCloud}"
 BIN_DIR="$HOME/.local/bin"
 
 say()   { printf "\033[1;36m==>\033[0m %s\n" "$*"; }
@@ -68,7 +68,7 @@ if ! command -v ollama >/dev/null 2>&1; then
         brew list ollama &>/dev/null || brew install ollama
     elif [ "$IS_TERMUX" != true ]; then
         say "Installing Ollama..."
-        curl -fsSL https://ollama.com/install.sh | sh || warn "Ollama install failed — TokenPFS will run in DEMO mode"
+        curl -fsSL https://ollama.com/install.sh | sh || warn "Ollama install failed — ServerCloud will run in DEMO mode"
     fi
 fi
 if command -v ollama >/dev/null 2>&1; then
@@ -80,11 +80,11 @@ if command -v ollama >/dev/null 2>&1; then
         sleep 2
     fi
 else
-    warn "Ollama unavailable — TokenPFS will start in DEMO mode"
+    warn "Ollama unavailable — ServerCloud will start in DEMO mode"
 fi
 
-# ---------- fetch TokenPFS ----------
-say "Downloading TokenPFS to $INSTALL_DIR ..."
+# ---------- fetch ServerCloud ----------
+say "Downloading ServerCloud to $INSTALL_DIR ..."
 if [ -d "$INSTALL_DIR/.git" ]; then
     git -C "$INSTALL_DIR" pull --ff-only >/dev/null && ok "Updated existing installation"
 else
@@ -94,13 +94,13 @@ fi
 
 # ---------- launcher ----------
 mkdir -p "$BIN_DIR"
-cat > "$BIN_DIR/tokenpfs" << LAUNCH
+cat > "$BIN_DIR/servercloud" << LAUNCH
 #!/usr/bin/env bash
 cd "$INSTALL_DIR"
-exec python3 tokenpfs_app.py "\$@"
+exec python3 servercloud_app.py "\$@"
 LAUNCH
-chmod +x "$BIN_DIR/tokenpfs"
-ok "Launcher created: $BIN_DIR/tokenpfs"
+chmod +x "$BIN_DIR/servercloud"
+ok "Launcher created: $BIN_DIR/servercloud"
 
 # ensure PATH contains ~/.local/bin
 RC="$HOME/.bashrc"; [ "$IS_TERMUX" = true ] && RC="$PREFIX/../.bashrc"
@@ -111,8 +111,8 @@ fi
 
 echo
 printf "\033[1;32m============================================================\033[0m\n"
-printf "  \033[1mTokenPFS installed!\033[0m\n\n"
-printf "  Run it:      \033[1;36mtokenpfs\033[0m\n"
+printf "  \033[1mServerCloud installed!\033[0m\n\n"
+printf "  Run it:      \033[1;36mservercloud\033[0m\n"
 printf "  First steps: /models  ->  /dl 01  ->  /w 01 <question>\n"
 printf "  Auto-tune:   /autt     (measures your hardware)\n"
 printf "\033[1;32m============================================================\033[0m\n"

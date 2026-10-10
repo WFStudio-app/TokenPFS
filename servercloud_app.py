@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TokenPFS — local token factory for Ollama models on Termux.
+"""ServerCloud — local token factory for Ollama models on Termux.
 
 Flow:
   1) pick from a catalog of 90 local models
@@ -22,27 +22,27 @@ import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from tokenpfs.core.version import APP_NAME, version_string          # noqa: E402
-from tokenpfs.core.models import (MODEL_CATALOG, catalog_lines, get_by_index,
+from servercloud.core.version import APP_NAME, version_string          # noqa: E402
+from servercloud.core.models import (MODEL_CATALOG, catalog_lines, get_by_index,
                                   giant_catalog_lines, HEAVY_THRESHOLD_GB)  # noqa: E402
 
-from tokenpfs.core.registry import Registry                          # noqa: E402
-from tokenpfs.core.jobs import Manager                               # noqa: E402
-from tokenpfs.core.chatml import ChatStore                           # noqa: E402
-from tokenpfs.core.options import GenOptions                         # noqa: E402
-from tokenpfs.core import hardware                                   # noqa: E402
-from tokenpfs.modules import ollama_api                               # noqa: E402
-from tokenpfs.modules import custom_models                           # noqa: E402
-from tokenpfs.modules.api_server import (ApiKey, KeyStore, ApiServer,
+from servercloud.core.registry import Registry                          # noqa: E402
+from servercloud.core.jobs import Manager                               # noqa: E402
+from servercloud.core.chatml import ChatStore                           # noqa: E402
+from servercloud.core.options import GenOptions                         # noqa: E402
+from servercloud.core import hardware                                   # noqa: E402
+from servercloud.modules import ollama_api                               # noqa: E402
+from servercloud.modules import custom_models                           # noqa: E402
+from servercloud.modules.api_server import (ApiKey, KeyStore, ApiServer,
                                          generate_key)                 # noqa: E402
-from tokenpfs.modules.cpts_api import (CptsStore, CptsClient,
+from servercloud.modules.cpts_api import (CptsStore, CptsClient,
                                        validate_key as cpts_valid_key)  # noqa: E402
-from tokenpfs.utils.colors import banner, c, GREEN, YELLOW, RED, MAGENTA, BOLD  # noqa: E402
+from servercloud.utils.colors import banner, c, GREEN, YELLOW, RED, MAGENTA, BOLD  # noqa: E402
 
-# NOTE: TOKENPFS_HOME is used by scripts/install.sh as the *checkout* dir.
-# The app's data dir must not collide with it -> use TOKENPFS_DATA instead.
-DATA_DIR = os.environ.get("TOKENPFS_DATA",
-                          os.path.join(os.path.expanduser("~"), ".tokenpfs"))
+# NOTE: SERVERCLOUD_HOME is used by scripts/install.sh as the *checkout* dir.
+# The app's data dir must not collide with it -> use SERVERCLOUD_DATA instead.
+DATA_DIR = os.environ.get("SERVERCLOUD_DATA",
+                          os.path.join(os.path.expanduser("~"), ".servercloud"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
@@ -58,13 +58,14 @@ class App:
         self.ver = ollama_api.server_version()
         # ---- network API (host your local models over the LAN/WAN) ----
         self.keystore = KeyStore(os.path.join(DATA_DIR, "api_keys.json"))
-        # ---- /cpts: client side — call OTHER people's TokenPFS APIs ----
+        # ---- /cpts: client side — call OTHER people's ServerCloud APIs ----
         self.cpts = CptsStore(os.path.join(DATA_DIR, "cpts.json"))
         self.api = None                 # ApiServer instance when running
-        api_host = os.environ.get("TOKENPFS_API_HOST", "0.0.0.0")
-        api_port = int(os.environ.get("TOKENPFS_API_PORT", "8777"))
+        api_host = os.environ.get("SERVERCLOUD_API_HOST", "0.0.0.0")
+        api_port = int(os.environ.get("SERVERCLOUD_API_PORT", "8777"))
         try:
             self.api = ApiServer(api_host, api_port,
+                                 app_name=APP_NAME,
                                  resolver=self._api_resolve,
                                  generator=self._api_generate,
                                  history_provider=lambda num: self.chat.history(num),
@@ -99,7 +100,7 @@ class App:
         """Blocking generation for API requests (no throttle cap here).
 
         If the host itself routes through an active /cpts remote, we forward
-        there instead of hitting the local Ollama — a TokenPFS chain
+        there instead of hitting the local Ollama — a ServerCloud chain
         (client -> my API -> someone else's API) then works transparently.
         """
         forced = model_name.startswith("#") and model_name[1:].isdigit()
@@ -296,9 +297,9 @@ class App:
             return
         print(c(f"API key #{arg} ({k.key}) deleted.", GREEN))
 
-    # ---------- /cpts — call OTHER people's TokenPFS APIs ----------
+    # ---------- /cpts — call OTHER people's ServerCloud APIs ----------
     def cmd_cpts(self, rest):
-        """`/cpts [API token] [url]` — register a remote TokenPFS API.
+        """`/cpts [API token] [url]` — register a remote ServerCloud API.
 
         The hoster gave you a key like SCA-XXXX-XXXX-XXXX (they created it
         with their own /apis). Optionally pass their base URL; default is
@@ -322,12 +323,12 @@ class App:
         if len(parts) >= 2:
             url = parts[1]
         else:
-            url = os.environ.get("TOKENPFS_CPTS_URL", "http://127.0.0.1:8777")
+            url = os.environ.get("SERVERCLOUD_CPTS_URL", "http://127.0.0.1:8777")
         if not re.match(r"^https?://", url):
             print(c("Base url must start with http:// or https://", RED))
             return
         client = CptsClient(url, key, timeout=10)
-        # verify connectivity + that it really is a TokenPFS API
+        # verify connectivity + that it really is a ServerCloud API
         try:
             info = client.health()
         except Exception as e:
@@ -335,8 +336,8 @@ class App:
             print(c("Key NOT saved. Check the address/port the hoster gave you.",
                     YELLOW))
             return
-        if str(info.get("app", "")).lower() != "tokenpfs":
-            print(c(f"{url} answered but is not a TokenPFS API "
+        if str(info.get("app", "")).lower() != "servercloud":
+            print(c(f"{url} answered but is not a ServerCloud API "
                     f"(got app={info.get('app')!r}). Key NOT saved.", RED))
             return
         # verify the key itself works against this server
@@ -356,7 +357,7 @@ class App:
         print(c(f"Remote API #{slot} added and ACTIVATED:", BOLD))
         print(f"   URL      : {rem['url']}")
         print(f"   Key      : {c(key, GREEN)}")
-        print(f"   Server   : TokenPFS {info.get('version', '?')}")
+        print(f"   Server   : ServerCloud {info.get('version', '?')}")
         print(f"   Models   : {', '.join(str(m.get('name', m)) for m in models) or '(none listed)'}")
         print(c(f"From now on /w questions go through this remote API. "
                 f"Switch back to local models with /cptslocal.", YELLOW))
@@ -370,7 +371,7 @@ class App:
             return
         mode = (f"ACTIVE → remote #{self.cpts.active}" if self.cpts.active
                 else "routing: LOCAL Ollama (see /cptsuse)")
-        print(c(f"Remote TokenPFS APIs ({mode}):", BOLD))
+        print(c(f"Remote ServerCloud APIs ({mode}):", BOLD))
         for n in sorted(remotes, key=lambda x: int(x)):
             r = remotes[n]
             flag = c("[>>]", GREEN) if self.cpts.active == n else "   "
@@ -410,7 +411,7 @@ class App:
 
     # ---- ollama runner with graceful fallback (demo mode if offline) ----
     def _runner(self, model, prompt, tps, on_token, stop_flag, number=None):
-        # /cpts routing: an active remote TokenPFS API answers instead of
+        # /cpts routing: an active remote ServerCloud API answers instead of
         # the local Ollama. ChatML context is unwrapped to the last user
         # turn — the remote host keeps its own history per key.
         remote_slot = self.cpts.active
@@ -428,7 +429,7 @@ class App:
             raise RuntimeError(f"ollama error: {e}")
 
     def _cpts_runner(self, slot, model, prompt, tps, on_token, stop_flag):
-        """Route one generation through a remote TokenPFS API (/cpts)."""
+        """Route one generation through a remote ServerCloud API (/cpts)."""
         rem = self.cpts.get(slot)
         if not rem:
             raise RuntimeError(f"cpts remote #{slot} disappeared")
@@ -849,7 +850,7 @@ class App:
             print(c("Registered in Ollama." if ok_ollama
                     else "Ollama create failed — registry-only mode.", YELLOW))
         elif not self.ok:
-            print(c("Ollama offline — registered in TokenPFS registry only (demo).", YELLOW))
+            print(c("Ollama offline — registered in ServerCloud registry only (demo).", YELLOW))
         num = self.reg.add(name, size)
         print(c(f"Custom model ready: [{num}] {name} ({size} GB, source: GitHub)", GREEN))
 
@@ -882,7 +883,7 @@ class App:
             print(c("Registered in Ollama." if ok_ollama
                     else "Ollama create failed — registry-only mode.", YELLOW))
         else:
-            print(c("Ollama offline — registered in TokenPFS registry only (demo).", YELLOW))
+            print(c("Ollama offline — registered in ServerCloud registry only (demo).", YELLOW))
         num = self.reg.add(name, size)
         print(c(f"Local model ready: [{num}] {name} ({size} GB, source: local file)", GREEN))
 
@@ -939,7 +940,7 @@ class App:
         print(c("Type 'help' for commands.", YELLOW))
         while True:
             try:
-                line = input(c("tokenpfs> ", GREEN)).strip()
+                line = input(c("servercloud> ", GREEN)).strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if not line:

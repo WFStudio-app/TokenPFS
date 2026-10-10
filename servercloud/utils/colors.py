@@ -1,4 +1,4 @@
-"""ANSI colors + startup banner for TokenPFS."""
+"""ANSI colors + startup banner for ServerCloud."""
 
 import os
 
@@ -35,12 +35,12 @@ LOGO = r"""
 
 def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int,
            extra=None):
-    from tokenpfs.core.models import MODEL_CATALOG
+    from servercloud.core.models import MODEL_CATALOG
     n = len(MODEL_CATALOG)
     lines = [c(LOGO, CYAN)]
     status = c(f"Ollama {ollama_ver} ONLINE", GREEN) if ollama_ok \
         else c("Ollama OFFLINE — run: pkg install ollama && ollama serve", RED)
-    lines.append(f"  TokenPFS v{version} | {status} | downloaded models: {n_models}")
+    lines.append(f"  ServerCloud v{version} | {status} | downloaded models: {n_models}")
     lines.append(c("  Commands:", BOLD))
     lines += [
         "    /w [model#] [question]   ask a model (parallel OK)",

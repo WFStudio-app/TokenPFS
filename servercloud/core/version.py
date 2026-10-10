@@ -1,4 +1,4 @@
-"""Version management for TokenPFS.
+"""Version management for ServerCloud.
 
 Versioning algorithm (X.X.X / SemVer):
   X.0.0 -> Global update (complete rewrite, breaking changes)
@@ -11,7 +11,7 @@ VERSION_MINOR = 0
 VERSION_PATCH = 2
 VERSION_SUFFIX = "-API.Beta.0"
 
-APP_NAME = "TokenPFS"
+APP_NAME = "ServerCloud"  # renamed from TokenPFS
 
 
 def version_string() -> str:

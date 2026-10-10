@@ -1,4 +1,4 @@
-"""TokenPFS Network API — serve local models over the network.
+"""ServerCloud Network API — serve local models over the network.
 
 The host creates API keys inside the REPL (/apis) and runs a small
 HTTP server (stdlib only, cross-platform: Linux / Termux / macOS / Windows).
@@ -114,7 +114,7 @@ class KeyStore:
             self.save()
 
     def get_by_number(self, number):
-        return self.keys.get(str(number))
+        return self.keys.get(str(number).strip())
 
     def get_by_key(self, raw_key):
         for k in self.keys.values():
@@ -137,7 +137,7 @@ class ApiServer:
     """Threaded HTTP server exposing selected local models via keys."""
 
     def __init__(self, host, port, resolver, generator, history_provider,
-                 keystore, app_name="TokenPFS", version="?",
+                 keystore, app_name="ServerCloud", version="?",
                  record_hook=None):
         self.host = host
         self.port = port
@@ -151,6 +151,9 @@ class ApiServer:
             self.record_exchange = record_hook
         self._httpd = None
         self._thread = None
+        # live HTTP/1.1 connections (keep-alive clients) tracked so that
+        # stop() can force-close them instead of hanging on shutdown()
+        self._live_conns = set()
 
     # ---------- lifecycle ----------
     def start(self):
@@ -164,6 +167,15 @@ class ApiServer:
     def stop(self):
         if self._httpd:
             self._httpd.shutdown()
+            # BUGFIX: BaseHTTPRequestHandler with protocol_version="HTTP/1.1"
+            # keeps sockets alive; a lingering client connection made
+            # shutdown() block forever and the app never exited after `quit`.
+            for conn in list(self._live_conns):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            self._live_conns.clear()
             self._httpd.server_close()
             self._httpd = None
 
@@ -198,11 +210,19 @@ class ApiServer:
 def _make_handler(app_ctx: ApiServer):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        server_version = "TokenPFS-API"
+        server_version = "ServerCloud-API"
 
         # silence default stderr logging into the REPL
         def log_message(self, fmt, *args):
             pass
+
+        def handle_one_request(self):
+            app_ctx._live_conns.add(self.connection)
+            try:
+                super().handle_one_request()
+            finally:
+                if getattr(self, "close_connection", True):
+                    app_ctx._live_conns.discard(self.connection)
 
         def _json(self, code, obj):
             body = json.dumps(obj, ensure_ascii=False).encode("utf-8")

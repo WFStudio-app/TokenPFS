@@ -10,16 +10,16 @@
 ## [2.00.2-API.Beta.0] — 2026-10-10 (Network API)
 
 ### Added
-- **Remote APIs as engine (`/cpts`)**: `/cpts <SCA-key> [url]` registers *another person's* TokenPFS host after live verification (`/api/health` + key check via `/v1/models` — bad keys are never saved), then all `/w` questions route through `POST /v1/chat` of that host. Manage with `/cptsm` (list + ok/fail counters), `/cptsuse <n>`, `/cptslocal`, `/cptsdel <n>`. Remotes persist in `~/.tokenpfs/cpts.json`. Relay chains A→B→C supported (a host with an active remote forwards incoming API requests upstream). New module `tokenpfs/modules/cpts_api.py`; README section «📡 Remote APIs as your engine».
+- **Remote APIs as engine (`/cpts`)**: `/cpts <SCA-key> [url]` registers *another person's* ServerCloud host after live verification (`/api/health` + key check via `/v1/models` — bad keys are never saved), then all `/w` questions route through `POST /v1/chat` of that host. Manage with `/cptsm` (list + ok/fail counters), `/cptsuse <n>`, `/cptslocal`, `/cptsdel <n>`. Remotes persist in `~/.servercloud/cpts.json`. Relay chains A→B→C supported (a host with an active remote forwards incoming API requests upstream). New module `servercloud/modules/cpts_api.py`; README section «📡 Remote APIs as your engine».
 - **Network API**: `/apis <models> <Y/N hist> <req/min> <slot#>` creates an `SCA-XXXX-XXXX-XXXX` key and hosts the chosen models over HTTP (auto-start on :8777, `TOKENPFS_API_HOST/PORT`). Endpoints: `/api/health`, `/v1/models`, `/v1/chat`, `/v1/generate`, `/v1/history?model=NN` (Y-keys only). Per-request temperature/top_p/max_tokens/num_ctx/seed overrides; proper 401/403/404/429/502 codes.
-- Key management: `/apim` monitor table, `/apioff <#>` / `/apion <#>` instant enable/disable, `/apidel <#>` delete. Keys persist in `~/.tokenpfs/api_keys.json`. README + banner + help updated.
+- Key management: `/apim` monitor table, `/apioff <#>` / `/apion <#>` instant enable/disable, `/apidel <#>` delete. Keys persist in `~/.servercloud/api_keys.json`. README + banner + help updated.
 
 ### Fixed
 - `/opt 01 temperature` (documented form) no longer "Unknown option '01'"; dispatch rewritten.
 - `/stop` keeps only the visible text in history (tagged `[stopped by user]`) instead of leaking the full hidden generation.
 - `pull_model()` false "Download failed" fixed for Ollama builds without a final success line.
 - REPL prefix collisions gone (`/watson …` ≠ `/w`, `/dlsx` ≠ `/dl sx`).
-- Tests use temp chat stores — no more writes into real `~/.tokenpfs/chat.json`.
+- Tests use temp chat stores — no more writes into real `~/.servercloud/chat.json`.
 - `TOKENPFS_HOME` (installer checkout) vs `TOKENPFS_DATA` (app data) can no longer collide.
 - API model refs accept "01"/"1" interchangeably.
 
@@ -30,7 +30,7 @@
 - **`/bmc` — Big Model Catalog**: only models needing ≥25 GB free SSD, sorted by size with hardware-class tags (single server GPU / multi-GPU server / datacenter). Magenta output, tip to check disk via `/autt`.
 - `/models` header now advertises `/bmc`; `help` lists `/bmc`; banner shows the new command.
 
- Changelog — TokenPFS
+ Changelog — ServerCloud
 
 Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 
@@ -43,7 +43,7 @@ Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 - Bugfix: duplicated user turns in history when two `/w` raced; crash `Manager.submit(prompt=...)` TypeError.
 
 ## v2.0.0-alpha — Global update (cross-platform support)
-- **Windows support**: new PowerShell installer `scripts/install.ps1` (winget for Python/Git, official OllamaSetup.exe silent install, `%USERPROFILE%\.tokenpfs\TokenPFS`, `tokenpfs.cmd` launcher + PATH).
+- **Windows support**: new PowerShell installer `scripts/install.ps1` (winget for Python/Git, official OllamaSetup.exe silent install, `%USERPROFILE%\.servercloud\ServerCloud`, `servercloud.cmd` launcher + PATH).
 - **macOS hardening**: Intel/Apple Silicon memory & temperature probing via sysctl/vm_stat/powermetrics; Homebrew path in installer.
 - **VPS/cloud support**: `install.sh` now runs headless over SSH as root (no sudo required), added yum/apk package managers, virtualization/VPS auto-detection (`systemd-detect-virt`, DMI product name, hypervisor cpu flag); `/autt` prints Platform + VPS class.
 - Cross-platform `/autt`: RAM measurement via ctypes GlobalMemoryStatusEx (Win), sysctl+vm_stat (macOS), psutil fallback everywhere.
@@ -56,8 +56,8 @@ Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 
 ## v1.1.0 — Major update
 - Catalog expanded from 20 to **43 models**, including heavy class (>16 GB SSD): llama3.1:70b, mixtral:8x22b, mistral-large, qwen2.5:32b, deepseek-r1:32b, gemma3:27b and more; tagged `[HEAVY >16GB]` with disk-space check before download.
-- **`/autt [model]`** — hardware power measurement (CPU cores, load, RAM, SSD, SoC temp → POWER SCORE 0..100) and automatic tokens/sec recommendation tuned to the device (`/stf` applied on confirm). New module `tokenpfs/core/hardware.py`.
-- **`/dnm [github url]`** — load custom model from GitHub: direct .gguf/Modelfile raw link, blob link (auto→raw), or plain repo URL (README scanned for HF/gguf links). Downloaded via `tokenpfs/modules/custom_models.py`, registered in Ollama (`ollama create`) when online, numbered [NN] right after.
+- **`/autt [model]`** — hardware power measurement (CPU cores, load, RAM, SSD, SoC temp → POWER SCORE 0..100) and automatic tokens/sec recommendation tuned to the device (`/stf` applied on confirm). New module `servercloud/core/hardware.py`.
+- **`/dnm [github url]`** — load custom model from GitHub: direct .gguf/Modelfile raw link, blob link (auto→raw), or plain repo URL (README scanned for HF/gguf links). Downloaded via `servercloud/modules/custom_models.py`, registered in Ollama (`ollama create`) when online, numbered [NN] right after.
 - **`/dnmf [path]`** — load your own local .gguf / Modelfile from the device into registry + Ollama.
 - **`/delm [name/#]`** — delete a downloaded model from registry (and `ollama rm` when possible).
 - Heavy-model guard: warning + confirmation if free SSD < needed size.
@@ -71,7 +71,7 @@ Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 - `/stop` no longer leaks the full hidden generation into chat history — only visible text is stored, tagged `[stopped by user]`.
 - `pull_model()` false "Download failed" on Ollama builds without final success line fixed (stream completion w/o error = success).
 - REPL prefix collisions gone (`/watson …` ≠ `/w …`, `/dlsx` ≠ `/dl sx`) — dispatch on first word.
-- Tests no longer write to the real ~/.tokenpfs/chat.json (temp store).
+- Tests no longer write to the real ~/.servercloud/chat.json (temp store).
 - TOKENPFS_HOME/TOKENPFS_DATA split: installer checkout dir vs app data dir can no longer collide.
 - API model refs accept "01"/"1" interchangeably (leading-zero normalization).
 

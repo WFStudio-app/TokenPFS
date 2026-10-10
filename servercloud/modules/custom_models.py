@@ -7,7 +7,7 @@ Supported sources:
 Local files: *.gguf or Modelfile.
 
 If Ollama is online the model is registered via a generated Modelfile
-(ollama create). Offline it is registered in TokenPFS registry only
+(ollama create). Offline it is registered in ServerCloud registry only
 (demo mode), so numbering [NN] still works.
 """
 
@@ -17,7 +17,7 @@ import json
 import urllib.request
 import urllib.error
 
-USER_AGENT = "Mozilla/5.0 (TokenPFS)"
+USER_AGENT = "Mozilla/5.0 (ServerCloud)"
 
 
 def _http_get(url, timeout=20):
