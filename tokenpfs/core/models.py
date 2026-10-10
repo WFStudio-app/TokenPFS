@@ -1,4 +1,4 @@
-"""Catalog of 20 local models available through Ollama.
+"""Catalog of 90 local models available through Ollama.
 
 Each model gets a sequential number [01], [02], ... assigned right after
 it is downloaded on the device (not from this catalog).
@@ -80,6 +80,27 @@ MODEL_CATALOG = [
     ("aya-expanse:32b",    18.5, "Aya",        "Cohere multilingual giant"),
     ("kimi-k2:1t",        594.0, "Kimi",       "Trillion-param MoE, datacenter"),
     ("llama3.1:405b",     231.0, "Llama3.1",   "Dense 405B, cluster class"),
+    # ---- Mistral family (full sweep) ----
+    ("mistral:7b-instruct-v0.2", 4.1, "Mistral", "v0.2 instruct classic"),
+    ("mistral:7b-instruct-v0.3", 4.1, "Mistral", "v0.3 instruct, function-calling"),
+    ("mistral-nemo",             7.1, "Mistral", "12B, NVIDIA co-tuned"),
+    ("mistral-small3.2:24b",     14.5, "Mistral","Recent small, tool-use"),
+    ("mistral-large:2",          40.5, "Mistral","Flagship dense v2"),
+    ("minimax-m2:62b",           20.0, "MiniMax","MoE coder on DeepSeek-architecture line"),
+    ("pixtral:12b",              7.0, "Pixtral", "Mistral vision 12B"),
+    ("magistral:7b",             4.5, "Magistral","Light reasoning MoE"),
+    ("devstral-small:24b",       14.6, "Devstral","Agentic coding, Mistral-based"),
+    # ---- DeepSeek family (full sweep) ----
+    ("deepseek-llm:7b",          4.0, "DeepSeek","Base LLM (no chat tune)"),
+    ("deepseek-coder:1.3b",      0.8, "DeepSeek","Tiny coding specialist"),
+    ("deepseek-coder:6.7b",      3.8, "DeepSeek","Classic light coder"),
+    ("deepseek-coder:33b",       18.6, "DeepSeek","Heavy coder"),
+    ("deepseek-coder-v2:16b",    8.9, "DeepSeek","MoE coder v2"),
+    ("deepseek-r1:8b",           5.0, "DeepSeek","Reasoning CoT 8B"),
+    ("deepseek-r1:14b",          8.7, "DeepSeek","Reasoning CoT 14B"),
+    ("deepseek-r1:distill-qwen-1.5b", 1.1, "DeepSeek","R1 distilled into Qwen tiny"),
+    ("deepseek-v2:16b",          8.4, "DeepSeek","MLA arch mid-size"),
+    ("deepseek-r1:671b",        365.0, "DeepSeek","Full R1 frontier MoE"),
 ]
 
 HEAVY_THRESHOLD_GB = 16.0   # models above this need >16 GB free SSD

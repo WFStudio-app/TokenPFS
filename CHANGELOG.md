@@ -1,3 +1,8 @@
+## [Unreleased]
+
+### Added
+- **Catalog expanded 71 → 90 models**: full Mistral sweep (`mistral:7b-instruct-v0.2/v0.3`, `mistral-nemo`, `mistral-small3.2:24b`, `mistral-large:2`, `pixtral:12b`, `magistral:7b`, `devstral-small:24b`) and full DeepSeek sweep (`deepseek-llm:7b`, `deepseek-coder:1.3b/6.7b/33b`, `deepseek-coder-v2:16b`, `deepseek-r1:8b/14b/distill-qwen-1.5b`, `deepseek-v2:16b`, `deepseek-r1:671b`). `/bmc` now lists 18 giants incl. `deepseek-r1:671b`.
+
 ## [2.00.2-API.Beta.0] — 2026-10-10 (Network API)
 
 ### Added
