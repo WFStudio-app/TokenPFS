@@ -4,7 +4,7 @@
 
 Generate tokens locally, ask several models **in parallel**, watch live generation stats, pay nothing for API calls.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)]() [![Python](https://img.shields.io/badge/python-3.6+-green)]() [![Platform](https://img.shields.io/badge/platform-Termux%20%7C%20Linux-orange)]() [![Engine](https://img.shields.io/badge/engine-Ollama-purple)]()
+[![Version](https://img.shields.io/badge/version/2.00.2--API.Beta.0-blue)]() [![Python](https://img.shields.io/badge/python-3.6+-green)]() [![Platform](https://img.shields.io/badge/platform-Termux%20%7C%20Linux-orange)]() [![Engine](https://img.shields.io/badge/engine-Ollama-purple)]()
 
 ---
 
@@ -21,6 +21,7 @@ Generate tokens locally, ask several models **in parallel**, watch live generati
 | 💬 **Clean answers** | Final line format: `> [model] - [answer] [time] [consumed tokens]` |
 | 🎛️ **Speed control** | `/stf <N>` sets how many tokens per second are produced for an answer |
 | 🧪 **Demo mode** | If Ollama is offline, everything still runs in simulated mode so you can learn the UX |
+| 🌐 **Network API** | `/apis` — host your local models over HTTP with `SCA-XXXX-XXXX-XXXX` keys, model whitelists, history toggle & rate limits |
 
 ---
 
@@ -100,7 +101,71 @@ Both questions were generated **in parallel**.
 | `/stf <tokens_per_sec>` | Set generation speed (0.1–1000 tok/s) |
 | `/status` | Snapshot of all active generations |
 | `/stop <job id>` | Stop a running job |
+| `/apis <models> <Y/N> <req/min> <slot#>` | Create an API key & host models over the network (see below) |
+| `/apim` | List/monitor your API keys and server status |
+| `/apioff <slot#>` / `/apion <slot#>` | Disable / re-enable one API key |
+| `/apidel <slot#>` | Delete an API key |
 | `help` / `quit` | Command list / exit (waits for running jobs up to 60 s) |
+
+---
+
+## 🌐 Network API — host your local models (`/apis`)
+
+TokenPFS can expose selected local models over HTTP so **other devices on your
+LAN/WAN can query them** using per-key authentication, model whitelists,
+optional dialog-history access and a requests-per-minute cap.
+
+### Create a key
+
+```
+tokenpfs> /apis 01,02,03 Y 60 1
+API key #1 created:
+   Key        : SCA-ABCD-EFGH-JKMN
+   Models     : 01, 02, 03      <- only these numbers are reachable via this key
+   History    : allowed         <- Y = client may read chat history (N = not)
+   Rate limit : 60 req/min
+   Endpoint   : http://192.168.x.x:8777
+```
+
+Format: `/apis [model numbers через запятую] [Y/N доступ к истории] [макс. запросов в минуту] [номер ключа]`.
+The key itself is generated automatically in the documented shape **`SCA-XXXX-XXXX-XXXX`**
+(crypto-random, unambiguous alphabet); the *slot number* is the one you choose.
+
+### Manage keys
+
+- `/apim` — table of all keys (on/off, models, rpm, served count)
+- `/apioff 1` — instantly disable key #1 (clients get `401 api key disabled`)
+- `/apion 1` — enable it again
+- `/apidel 1` — remove it permanently
+
+### Endpoints (all JSON, auth via `Authorization: Bearer SCA-...` or `X-API-Key`)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/health` | liveness check (no auth) |
+| GET | `/v1/models` | models bound to your key |
+| POST | `/v1/chat` | `{"model":"01","messages":[{"role":"user","content":"Привет"}]}` |
+| POST | `/v1/generate` | `{"model":"01","prompt":"..."}` |
+| GET | `/v1/history?model=01` | dialog history — **only if key was created with `Y`** |
+
+Optional per-request generation overrides: `temperature`, `top_p`, `max_tokens`, `num_ctx`, `seed`.
+
+Errors: `401` bad/disabled key · `403` model not bound to key / history denied ·
+`404` model unavailable on host · `429` rate limit exceeded · `502` generation failed.
+
+### Client example
+
+```bash
+curl -X POST http://YOUR-HOST:8777/v1/chat \
+  -H "Authorization: Bearer SCA-ABCD-EFGH-JKMN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"01","messages":[{"role":"user","content":"Привет!"}]}'
+```
+
+Server address/port: env `TOKENPFS_API_HOST` (default `0.0.0.0`) and
+`TOKENPFS_API_PORT` (default `8777`). Keys persist in `~/.tokenpfs/api_keys.json`.
+⚠️ The API is plain HTTP — intended for trusted LANs; put it behind SSH tunnel /
+reverse-proxy with TLS for public exposure.
 
 Environment variables:
 

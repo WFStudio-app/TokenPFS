@@ -33,7 +33,8 @@ LOGO = r"""
 """
 
 
-def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int):
+def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int,
+           extra=None):
     from tokenpfs.core.models import MODEL_CATALOG
     n = len(MODEL_CATALOG)
     lines = [c(LOGO, CYAN)]
@@ -56,4 +57,6 @@ def banner(version: str, ollama_ok: bool, ollama_ver: str, n_models: int):
         "    /stop [job id]           stop a running job",
         "    help / quit              this list / exit",
     ]
+    if extra:
+        lines += list(extra)
     return "\n".join(lines)

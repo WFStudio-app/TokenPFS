@@ -1,3 +1,18 @@
+## [2.00.2-API.Beta.0] — 2026-10-10 (Network API)
+
+### Added
+- **Network API**: `/apis <models> <Y/N hist> <req/min> <slot#>` creates an `SCA-XXXX-XXXX-XXXX` key and hosts the chosen models over HTTP (auto-start on :8777, `TOKENPFS_API_HOST/PORT`). Endpoints: `/api/health`, `/v1/models`, `/v1/chat`, `/v1/generate`, `/v1/history?model=NN` (Y-keys only). Per-request temperature/top_p/max_tokens/num_ctx/seed overrides; proper 401/403/404/429/502 codes.
+- Key management: `/apim` monitor table, `/apioff <#>` / `/apion <#>` instant enable/disable, `/apidel <#>` delete. Keys persist in `~/.tokenpfs/api_keys.json`. README + banner + help updated.
+
+### Fixed
+- `/opt 01 temperature` (documented form) no longer "Unknown option '01'"; dispatch rewritten.
+- `/stop` keeps only the visible text in history (tagged `[stopped by user]`) instead of leaking the full hidden generation.
+- `pull_model()` false "Download failed" fixed for Ollama builds without a final success line.
+- REPL prefix collisions gone (`/watson …` ≠ `/w`, `/dlsx` ≠ `/dl sx`).
+- Tests use temp chat stores — no more writes into real `~/.tokenpfs/chat.json`.
+- `TOKENPFS_HOME` (installer checkout) vs `TOKENPFS_DATA` (app data) can no longer collide.
+- API model refs accept "01"/"1" interchangeably.
+
 ### [2.1.1-alpha] — 2026-10-10 (Unreleased)
 
 ### Added
@@ -39,3 +54,14 @@ Version algorithm (X.X.X): **X.0.0** global · **0.X.0** major · **0.0.X** mini
 
 ## v1.0.0 — Initial release
 - 20-model catalog, Download Y/n flow, parallel `/w` questions, `/stf` tok/s cap, live dashboard, numbered models [01],[02]..., Termux/Linux support via Ollama.
+
+
+### 🐛 Fixed (bughunt release-wide)
+- `/opt 01 temperature` (documented form) now shows the model's option instead of "Unknown option '01'"; command dispatch rewritten.
+- `/stop` no longer leaks the full hidden generation into chat history — only visible text is stored, tagged `[stopped by user]`.
+- `pull_model()` false "Download failed" on Ollama builds without final success line fixed (stream completion w/o error = success).
+- REPL prefix collisions gone (`/watson …` ≠ `/w …`, `/dlsx` ≠ `/dl sx`) — dispatch on first word.
+- Tests no longer write to the real ~/.tokenpfs/chat.json (temp store).
+- TOKENPFS_HOME/TOKENPFS_DATA split: installer checkout dir vs app data dir can no longer collide.
+- API model refs accept "01"/"1" interchangeably (leading-zero normalization).
+

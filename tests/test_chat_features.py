@@ -1,14 +1,19 @@
 """Regression tests: chat context, system prompt, gen options, real metrics, DEMO label."""
-import sys, time, unittest, threading
+import os, sys, time, unittest, threading
 sys.path.insert(0, '.')
 from tokenpfs.core.chatml import ChatStore
 from tokenpfs.core.options import GenOptions
 from tokenpfs.core.jobs import Manager
 
 
+def _tmp_store():
+    import tempfile
+    return ChatStore(path=os.path.join(tempfile.mkdtemp(), "chat.json"))
+
+
 class TestChatContext(unittest.TestCase):
     def test_system_and_history_embedded(self):
-        c = ChatStore()
+        c = _tmp_store()
         c.set_system("01", "Отвечай по-русски.")
         c.add("01", "user", "Меня зовут Максим")
         c.add("01", "assistant", "Привет, Максим!")
@@ -17,7 +22,7 @@ class TestChatContext(unittest.TestCase):
         self.assertIn("Как меня зовут?", p)
 
     def test_clear_resets_history(self):
-        c = ChatStore(); c.add("02", "user", "x"); c.clear("02")
+        c = _tmp_store(); c.add("02", "user", "x"); c.clear("02")
         self.assertEqual(len(c.history("02")), 0)
 
     def test_submit_registers_user_turn_once(self):

@@ -79,7 +79,10 @@ New-Item -ItemType Directory -Force -Path $bin | Out-Null
 $cmd = Join-Path $bin "tokenpfs.cmd"
 @"
 @echo off
-python "$InstallDir\tokenpfs_app.py" %*
+rem UTF-8 codepage + PYTHONUTF8: prevents UnicodeEncodeError on Cyrillic/box chars
+chcp 65001 >nul
+set PYTHONUTF8=1
+"$PYEXE" "$InstallDir\tokenpfs_app.py" %*
 "@ | Set-Content -Path $cmd -Encoding ASCII
 
 $userPath = [System.Environment]::GetEnvironmentVariable("Path","User")

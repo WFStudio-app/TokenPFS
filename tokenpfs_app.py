@@ -32,6 +32,8 @@ from tokenpfs.core.options import GenOptions                         # noqa: E40
 from tokenpfs.core import hardware                                   # noqa: E402
 from tokenpfs.modules import ollama_api                               # noqa: E402
 from tokenpfs.modules import custom_models                           # noqa: E402
+from tokenpfs.modules.api_server import (ApiKey, KeyStore, ApiServer,
+                                         generate_key)                 # noqa: E402
 from tokenpfs.utils.colors import banner, c, GREEN, YELLOW, RED, MAGENTA, BOLD  # noqa: E402
 
 # NOTE: TOKENPFS_HOME is used by scripts/install.sh as the *checkout* dir.
@@ -51,6 +53,182 @@ class App:
         self.opt_model = None   # model targeted by /opt
         self.ok = ollama_api.is_alive()
         self.ver = ollama_api.server_version()
+        # ---- network API (host your local models over the LAN/WAN) ----
+        self.keystore = KeyStore(os.path.join(DATA_DIR, "api_keys.json"))
+        self.api = None                 # ApiServer instance when running
+        api_host = os.environ.get("TOKENPFS_API_HOST", "0.0.0.0")
+        api_port = int(os.environ.get("TOKENPFS_API_PORT", "8777"))
+        try:
+            self.api = ApiServer(api_host, api_port,
+                                 resolver=self._api_resolve,
+                                 generator=self._api_generate,
+                                 history_provider=lambda num: self.chat.history(num),
+                                 keystore=self.keystore,
+                                 version=version_string())
+            self.api.start()
+        except OSError as e:
+            print(c(f"API server could not bind {api_host}:{api_port} — {e}", YELLOW))
+            self.api = None
+
+    # ---------- network API helpers ----------
+    def _api_resolve(self, ref):
+        """Map a key-bound model reference to a real Ollama model name.
+
+        Accepts registry numbers ("01"), catalog numbers ("3" / "03") and
+        exact model names; returns None if the model is not resolvable.
+        """
+        num, entry = self.reg.find(ref)
+        if entry:
+            return entry["name"]
+        if str(ref).isdigit() and 1 <= int(ref) <= len(MODEL_CATALOG):
+            return MODEL_CATALOG[int(ref) - 1][0]
+        matches = [n for n, _, _, _ in MODEL_CATALOG if n == ref]
+        return matches[0] if matches else None
+
+    def _api_generate(self, model_name, prompt, options):
+        """Blocking generation for API requests (no throttle cap here)."""
+        if not self.ok:
+            # demo mode mirrors REPL behaviour when Ollama is offline
+            return (f"[DEMO MODE — Ollama offline] I am {model_name}. "
+                    f"Received {len(prompt)} chars of prompt.")
+        text, _n, _el, _stats = ollama_api.generate_stream(
+            model_name, prompt, tokens_per_sec=100000.0,
+            on_token=None, stop_flag=None, options=options)
+        return text
+
+    def _api_url_hint(self):
+        if not self.api:
+            return "offline"
+        host = self.api.host
+        if host in ("0.0.0.0", "::"):
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                host = s.getsockname()[0]
+                s.close()
+            except Exception:
+                host = socket.gethostbyname(socket.gethostname())
+        return f"http://{host}:{self.api.port}"
+
+    # ---------- /apis /apim /apioff /apion ----------
+    def cmd_apis(self, rest):
+        """Create a new API key and start serving it.
+
+        Usage: /apis [models] [Y/N history] [req/min] [key slot number]
+        Example: /apis 01,02,03 Y 60 1
+        """
+        parts = rest.split()
+        if len(parts) < 4:
+            print(c("Usage: /apis [model numbers, e.g. 01,02,03] "
+                    "[history access Y/N] [max req/min] [key slot number]", YELLOW))
+            print(c("Example: /apis 01,02,03 Y 60 1", YELLOW))
+            return
+        models_raw, hist_raw, rpm_raw, slot_raw = parts[0], parts[1], parts[2], parts[3]
+        # validate models list against registry + catalog
+        models = [m.strip() for m in models_raw.split(",") if m.strip()]
+        if not models:
+            print(c("No model numbers given.", RED))
+            return
+        bad = []
+        for m in models:
+            num, entry = self.reg.find(m)
+            in_catalog = m.isdigit() and 1 <= int(m) <= len(MODEL_CATALOG)
+            if not entry and not in_catalog:
+                bad.append(m)
+        if bad:
+            print(c(f"Unknown model numbers: {', '.join(bad)}. "
+                    f"See /list (downloaded) or /models (catalog).", RED))
+            return
+        # history flag
+        h = hist_raw.strip().lower()
+        if h in ("y", "yes", "д"):
+            allow_hist = True
+        elif h in ("n", "no", "н"):
+            allow_hist = False
+        else:
+            print(c("History access must be Y or N.", RED))
+            return
+        # rate limit
+        try:
+            rpm = int(rpm_raw)
+            if not (1 <= rpm <= 10000):
+                raise ValueError
+        except ValueError:
+            print(c("Requests/min must be an integer 1..10000.", RED))
+            return
+        # slot number
+        if not slot_raw.isdigit() or not (1 <= int(slot_raw) <= 9999):
+            print(c("Key slot number must be an integer 1..9999.", RED))
+            return
+        slot = str(int(slot_raw))
+        if self.keystore.get_by_number(slot):
+            print(c(f"API key #{slot} already exists. Remove it with "
+                    f"/apidel {slot} or pick another number.", RED))
+            return
+        key = ApiKey(slot, generate_key(), models, allow_hist, rpm)
+        self.keystore.add(key)
+        print(c(f"API key #{slot} created:", BOLD))
+        print(f"   Key        : {c(key.key, GREEN)}")
+        print(f"   Models     : {', '.join(models)}")
+        print(f"   History    : {'allowed' if allow_hist else 'denied'}")
+        print(f"   Rate limit : {rpm} req/min")
+        print(f"   Endpoint   : {self._api_url_hint()}")
+        if self.api:
+            print(c("Server is LIVE now. Client example:", BOLD))
+            print(f"   curl -X POST {self._api_url_hint()}/v1/chat \\")
+            print(f"     -H 'Authorization: Bearer {key.key}' \\")
+            print(f"     -d '{{\"model\":\"{models[0]}\",\"messages\":[{{\"role\":\"user\",\"content\":\"Привет\"}}]}}'")
+        else:
+            print(c("WARNING: API server is not running (port busy?) — "
+                    "the key is saved but cannot be used yet.", YELLOW))
+
+    def cmd_apim(self, rest):
+        """/apim — manage/monitor API keys."""
+        keys = self.keystore.all()
+        state = c("RUNNING", GREEN) if (self.api and self.api.running) else c("STOPPED", RED)
+        print(c(f"API server: {state} at {self._api_url_hint()}", BOLD))
+        if not keys:
+            print(c("No API keys yet. Create one: /apis 01,02 Y 60 1", YELLOW))
+            return
+        print(c("Keys:", BOLD))
+        for n in sorted(keys, key=lambda x: int(x)):
+            k = keys[n]
+            flag = c("[on ]", GREEN) if k.enabled else c("[OFF]", YELLOW)
+            hist = "hist=Y" if k.allow_history else "hist=N"
+            print(f"  #{n:>3} {flag} {k.key}  models=[{','.join(k.models)}] "
+                  f"{hist} {k.rpm} req/min  served={k.total_requests}  since {k.created}")
+        print(c("Commands: /apioff <#> | /apion <#> | /apidel <#>", YELLOW))
+
+    def _set_key_enabled(self, arg, enabled):
+        if not arg.isdigit():
+            print(c("Usage: /apioff <key number> | /apion <key number>", YELLOW))
+            return
+        k = self.keystore.get_by_number(arg)
+        if not k:
+            print(c(f"API key #{arg} not found (see /apim).", RED))
+            return
+        k.enabled = enabled
+        self.keystore.save()
+        what = "enabled (/apion)" if enabled else "disabled (/apioff)"
+        print(c(f"API key #{arg} {k.key} {what}.", GREEN if enabled else YELLOW))
+
+    def cmd_apioff(self, arg):
+        self._set_key_enabled(arg.strip(), False)
+
+    def cmd_apion(self, arg):
+        self._set_key_enabled(arg.strip(), True)
+
+    def cmd_apidel(self, arg):
+        if not arg.isdigit():
+            print(c("Usage: /apidel <key number>", YELLOW))
+            return
+        k = self.keystore.remove(arg)
+        if not k:
+            print(c(f"API key #{arg} not found.", RED))
+            return
+        print(c(f"API key #{arg} ({k.key}) deleted.", GREEN))
+
 
     # ---- ollama runner with graceful fallback (demo mode if offline) ----
     def _runner(self, model, prompt, tps, on_token, stop_flag, number=None):
@@ -475,7 +653,10 @@ class App:
 
     # ---- main REPL ----
     def run(self):
-        print(banner(version_string(), self.ok, self.ver, len(self.reg.all())))
+        api_line = (f"API {self._api_url_hint()}" if (self.api and self.api.running)
+                    else "API offline")
+        print(banner(version_string(), self.ok, self.ver, len(self.reg.all()),
+                     extra=[f"    /apis /apim /apioff /apion   network API keys | {api_line}"]))
         if not self.ok:
             print(c("Ollama not reachable — running in DEMO mode "
                     "(fake generation).", YELLOW))
@@ -505,6 +686,8 @@ class App:
                       "/sys [model|all] <prompt> | /opt [model] <key> [val] | "
                       "/clear [model] | /stf <tps> | /autt [model] | "
                       "/dnm <github-url> | /dnmf <path> | /delm <name/#> | "
+                      "/apis <01,02> <Y/N hist> <req/min> <slot#> | "
+                      "/apim | /apioff <#> | /apion <#> | /apidel <#> | "
                       "/status | /stop <job id> | quit")
             elif head == "/models":
                 self.cmd_models()
@@ -548,6 +731,16 @@ class App:
                     print(c("Usage: /stf <tokens per second> (0.1..1000)", YELLOW))
             elif head == "/status":
                 self.dashboard()
+            elif head == "/apis":
+                self.cmd_apis(arg)
+            elif head == "/apim":
+                self.cmd_apim(arg)
+            elif head == "/apioff":
+                self.cmd_apioff(arg)
+            elif head == "/apion":
+                self.cmd_apion(arg)
+            elif head == "/apidel":
+                self.cmd_apidel(arg)
             elif head == "/stop":
                 found = False
                 for j in self.mgr.jobs:
@@ -565,6 +758,8 @@ class App:
         time.sleep(0.3)  # final flush of result lines
         stop_event.set()
         dash.join(timeout=2)
+        if self.api:
+            self.api.stop()
         print("Bye.")
 
 
