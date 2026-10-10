@@ -34,7 +34,9 @@ from tokenpfs.modules import ollama_api                               # noqa: E4
 from tokenpfs.modules import custom_models                           # noqa: E402
 from tokenpfs.utils.colors import banner, c, GREEN, YELLOW, RED, MAGENTA, BOLD  # noqa: E402
 
-DATA_DIR = os.environ.get("TOKENPFS_HOME",
+# NOTE: TOKENPFS_HOME is used by scripts/install.sh as the *checkout* dir.
+# The app's data dir must not collide with it -> use TOKENPFS_DATA instead.
+DATA_DIR = os.environ.get("TOKENPFS_DATA",
                           os.path.join(os.path.expanduser("~"), ".tokenpfs"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -68,8 +70,8 @@ class App:
         # show only the last user turn, not the raw ChatML context blob
         last_user = prompt
         if "<|im_start|>" in prompt:
-            chunks = [c for c in prompt.split("<|im_start|>")
-                      if c.startswith("user")]
+            chunks = [part for part in prompt.split("<|im_start|>")
+                      if part.startswith("user")]
             if chunks:
                 last_user = chunks[-1].split("<|im_end|>")[0]
                 last_user = last_user.split("\n", 1)[-1]
@@ -226,16 +228,35 @@ class App:
         print(c(f"System prompt set for {scope}: {text!r}", GREEN))
 
     def cmd_opt(self, rest):
-        """/opt [model] [key value | key | unset key] — generation settings."""
+        """(/opt|/o) [model] [key value | key | unset key] — gen settings.
+
+        Accepted forms (all documented in the usage line):
+          /opt                          -> session summary
+          /opt temperature              -> show one option (session)
+          /opt 01 temperature           -> show one option (model 01)
+          /opt temperature 0.7          -> set (session)
+          /opt 01 temperature 0.7       -> set (model 01)
+          /opt unset temperature        -> reset session key to default
+          /opt 01 unset temperature     -> drop model override
+        A bare number ('01', '1') is ALWAYS a model reference; anything
+        else that resolves to exactly one model is treated as a model too
+        (so '/opt qwen temperature' works), unless it is an option keyword.
+        """
         parts = rest.split()
         target = None
         if parts:
-            num, name = self._resolve_model(parts[0], quiet=True)
-            # only consume the first token as a model ref when a real
-            # key/value follows it (>= 2 remaining tokens)
-            if name and len(parts) >= 3:
-                target = str(num)
-                parts = parts[1:]
+            first = parts[0].lower()
+            looks_like_model = bool(re.fullmatch(r"\d{1,2}", first)) or \
+                               (first not in GenOptions.KEYS and first != "unset")
+            if looks_like_model:
+                num, name = self._resolve_model(parts[0], quiet=True)
+                if name:
+                    target = str(num)
+                    parts = parts[1:]
+                elif re.fullmatch(r"\d{1,2}", first):
+                    print(c(f"Unknown model '{parts[0]}'. Download it with "
+                            f"/dl <number> (see /models).", RED))
+                    return
         if not parts:                     # bare /opt -> show effective summary
             scope = f" for model [{target}]" if target else " (session default)"
             print(c("Generation options" + scope + ": " + self.opts.summary(target), BOLD))
@@ -245,14 +266,19 @@ class App:
                     "/opt [model] unset temperature", YELLOW))
             return
         key = parts[0].lower()
-        if key == "unset" and len(parts) >= 2:
-            ok, msg = self.opts.unset(target, parts[1])
+        if key == "unset":
+            if len(parts) >= 2:
+                ok, msg = self.opts.unset(target, parts[1])
+            else:
+                ok, msg = (False, "Usage: /opt [model] unset <key>")
             print(c(msg, GREEN if ok else RED))
             return
         if len(parts) == 1:               # show single option
             val = self.opts.get(target, key)
             if val is None:
-                print(c(f"Option '{key}' is not set (Ollama default used).", YELLOW))
+                scope = f"model [{target}]" if target else "session"
+                print(c(f"Option '{key}' is not set for {scope} "
+                        f"(Ollama default used).", YELLOW))
             else:
                 print(c(f"{key} = {val}" +
                         (f" (model [{target}])" if target else " (session)"), BOLD))
@@ -466,49 +492,52 @@ class App:
             if not line:
                 continue
             low = line.lower()
-            if low in ("quit", "exit"):
+            # dispatch on the FIRST whitespace-delimited word only, so that
+            # '/watson test' is never mistaken for '/w atson test', and
+            # '/dlsx' is reported as an unknown command instead of running /dl.
+            head = low.split(maxsplit=1)[0]
+            arg = line[len(head):].strip()
+            if head in ("quit", "exit"):
                 break
-            elif low == "help":
+            elif head == "help":
                 print("/models | /bmc (25GB+ giants) | /dl <n> | /list | "
                       "/w <model> <text> (chat) | "
-                      "/sys [model|all] <prompt> | /opt <key> <val> | "
+                      "/sys [model|all] <prompt> | /opt [model] <key> [val] | "
                       "/clear [model] | /stf <tps> | /autt [model] | "
                       "/dnm <github-url> | /dnmf <path> | /delm <name/#> | "
                       "/status | /stop <job id> | quit")
-            elif low == "/models":
+            elif head == "/models":
                 self.cmd_models()
-            elif low == "/bmc":
+            elif head == "/bmc":
                 self.cmd_bmc()
-            elif low.startswith("/dnmf"):
-                self.cmd_dnmf(line[5:].strip())
-            elif low.startswith("/dnm"):
-                self.cmd_dnm(line[4:].strip())
-            elif low.startswith("/delm"):
-                self.cmd_delm(line[5:].strip())
-            elif low.startswith("/autt"):
-                self.cmd_autt(line[5:].strip())
-            elif low.startswith("/dl"):
-                arg = line[3:].strip()
+            elif head == "/dnmf":
+                self.cmd_dnmf(arg)
+            elif head == "/dnm":
+                self.cmd_dnm(arg)
+            elif head == "/delm":
+                self.cmd_delm(arg)
+            elif head == "/autt":
+                self.cmd_autt(arg)
+            elif head == "/dl":
                 if arg:
                     self.download(arg)
                 else:
                     print(c("Usage: /dl <catalog number>", YELLOW))
-            elif low == "/list":
+            elif head == "/list":
                 items = self.reg.all()
                 if not items:
                     print(c("Nothing downloaded yet. Use /dl <number>.", YELLOW))
                 for n, e in items.items():
                     print(f"  [{n}] {e['name']} (~{e['size_gb']} GB)")
-            elif low.startswith("/w"):
-                self.ask(line[2:].strip())
-            elif low.startswith("/sys"):
-                self.cmd_sys(line[4:].strip())
-            elif low.startswith("/opt"):
-                self.cmd_opt(line[4:].strip())
-            elif low.startswith("/clear"):
-                self.cmd_clear(line[6:].strip())
-            elif low.startswith("/stf"):
-                arg = line[4:].strip()
+            elif head == "/w":
+                self.ask(arg)
+            elif head == "/sys":
+                self.cmd_sys(arg)
+            elif head == "/opt":
+                self.cmd_opt(arg)
+            elif head == "/clear":
+                self.cmd_clear(arg)
+            elif head == "/stf":
                 try:
                     v = float(arg)
                     if not (0.1 <= v <= 1000):
@@ -517,10 +546,9 @@ class App:
                     print(c(f"Generation speed set to {v:.1f} tokens/sec", GREEN))
                 except ValueError:
                     print(c("Usage: /stf <tokens per second> (0.1..1000)", YELLOW))
-            elif low == "/status":
+            elif head == "/status":
                 self.dashboard()
-            elif low.startswith("/stop"):
-                arg = line[5:].strip()
+            elif head == "/stop":
                 found = False
                 for j in self.mgr.jobs:
                     if str(j.id) == arg and j.state == "generating":

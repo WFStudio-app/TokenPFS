@@ -11,7 +11,7 @@ import time
 
 
 class Job:
-    _seq = itertools_count = None
+    _id_lock = threading.Lock()
 
     def __init__(self, jid, number, model, prompt, tps, runner,
                  prompt_full=None, chat=None):
@@ -31,6 +31,7 @@ class Job:
         self.finished = None
         self.answer = ""
         self.error = None
+        self._printed = False     # result line already shown by status_loop
         self.stop_flag = threading.Event()
         self.lock = threading.Lock()
 
@@ -105,6 +106,7 @@ class Manager:
             else:
                 text, ntok, elapsed = res
                 stats = {"source": "timer", "eval_count": ntok}
+            stopped = job.stop_flag.is_set()
             with job.lock:
                 job.stats = stats
                 job.demo = stats.get("source") == "demo"
@@ -112,15 +114,24 @@ class Manager:
                 real = stats.get("eval_count")
                 if isinstance(real, int) and real > 0:
                     job.tokens_out = real
-                if job.stop_flag.is_set():
+                if stopped:
                     job.state = "stopped"
+                    # BUGFIX: do NOT keep the hidden full text in history —
+                    # the user aborted, so the model must not "remember" an
+                    # answer that was never shown. Keep only what was streamed.
+                    visible = job.answer.strip()[:2000]
                 else:
                     job.answer = text
                     job.state = "done"
+                    visible = text.strip()[:2000]
                 # append assistant turn to chat history (context memory)
                 if job.chat is not None and job.number not in ("?", ""):
-                    job.chat.add(job.number, "assistant",
-                                 text.strip()[:2000])
+                    if stopped:
+                        if visible:
+                            job.chat.add(job.number, "assistant", visible +
+                                         " [stopped by user]")
+                    else:
+                        job.chat.add(job.number, "assistant", visible)
         except Exception as e:
             job.error = str(e)
             job.state = "error"
@@ -137,7 +148,7 @@ class Manager:
         with self._lock:
             snapshot = list(self.jobs)
         for j in snapshot:
-            if j.state == "done" and not getattr(j, "_printed", False):
+            if j.state == "done" and not j._printed:
                 j._printed = True
                 dur = (j.finished - j.started) if j.started and j.finished else 0
                 ans = j.answer.replace("\n", " ").strip()
@@ -153,7 +164,7 @@ class Manager:
                         f"{(j.tokens_out / dur if dur else 0):.1f} tok/s ({src})"
                 out.append(f"> {label}{demo_tag} - {ans} [{dur:.1f}s] "
                            f"[{j.tokens_out} tok] [{tps_s}]")
-            elif j.state == "error" and not getattr(j, "_printed", False):
+            elif j.state == "error" and not j._printed:
                 j._printed = True
                 label = f"[{j.number}] {j.model}" if j.number not in ("?", "") else j.model
                 out.append(f"> {label} - ERROR: {j.error}")

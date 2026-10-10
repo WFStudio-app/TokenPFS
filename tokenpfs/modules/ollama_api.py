@@ -59,7 +59,7 @@ def pull_model(name: str, on_progress=None, timeout=3600):
     try:
         with _request("/api/pull", {"name": name, "stream": True},
                       timeout=timeout) as resp:
-            done = False
+            saw_error = None
             for raw in resp:
                 line = raw.decode(errors="replace").strip()
                 if not line:
@@ -70,11 +70,20 @@ def pull_model(name: str, on_progress=None, timeout=3600):
                     continue
                 if on_progress:
                     on_progress(obj)
-                if obj.get("status", "").lower() in ("success", "already exists"):
-                    done = True
-                if "error" in obj:
-                    return False
-            return done
+                if obj.get("error"):
+                    saw_error = str(obj["error"])
+                    break
+                st = str(obj.get("status", "")).lower()
+                if st in ("success", "already exists"):
+                    break   # confirmed success
+            # BUGFIX: some Ollama versions end the stream without a final
+            # {"status":"success"} line (last message is e.g. {"digest":...}
+            # or "verifying layers"). If the stream completed WITHOUT an
+            # error we treat it as success — previously this returned False
+            # and printed "Download failed" for a model that actually pulled.
+            if saw_error:
+                return False
+            return True
     except Exception:
         return False
 
@@ -96,6 +105,7 @@ def generate_stream(model: str, prompt: str, tokens_per_sec: float,
     text_parts = []
     n_tok = 0
     start = time.time()
+    stats = None
     with _request("/api/generate", payload, timeout=timeout) as resp:
         period = 1.0 / max(tokens_per_sec, 0.1)
         next_emit = time.time()
