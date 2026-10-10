@@ -10,8 +10,26 @@ $InstallDir = Join-Path $env:USERPROFILE ".tokenpfs\TokenPFS"
 Write-Host "== TokenPFS installer (Windows) ==" -ForegroundColor Cyan
 
 # --- 1. Python ---------------------------------------------------------------
-$py = Get-Command python -ErrorAction SilentlyContinue
-if (-not $py) {
+# On clean Win10/11 "python" is often only the Microsoft Store stub (opens the
+# Store instead of running) or missing entirely. Probe candidates with a real
+# "--version" launch so stubs are rejected, prefer the "py" launcher.
+function Find-Python {
+    foreach ($name in @("py", "python", "python3")) {
+        $g = Get-Command $name -ErrorAction SilentlyContinue
+        if (-not $g) { continue }
+        try {
+            $v = if ($name -eq "py") { & py -3 --version 2>$null } else { & $name --version 2>$null }
+            if ($LASTEXITCODE -eq 0 -and "$v" -match "Python 3") {
+                if ($name -eq "py") { return @{ Exe = "py"; Args = @("-3") } }
+                return @{ Exe = $g.Source; Args = @() }
+            }
+        } catch { }
+    }
+    return $null
+}
+
+$PY = Find-Python
+if (-not $PY) {
     Write-Host "[i] Python not found — installing via winget..." -ForegroundColor Yellow
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($winget) {
@@ -23,11 +41,12 @@ if (-not $py) {
     # refresh PATH for this session
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("Path","User")
-    $py = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $py) { Write-Host "[!] Python still not on PATH — reopen PowerShell and rerun." -ForegroundColor Red; exit 1 }
+    $PY = Find-Python
+    if (-not $PY) { Write-Host "[!] Python still not on PATH — reopen PowerShell and rerun." -ForegroundColor Red; exit 1 }
 }
-& python --version
-Write-Host "[ok] Python found." -ForegroundColor Green
+if ($PY.Args.Count -gt 0) { & $PY.Exe $PY.Args[0] --version } else { & $PY.Exe --version }
+$PYEXE = if ($PY.Args.Count -gt 0) { "`"$($PY.Exe)`" $($PY.Args[0])" } else { "`"$($PY.Exe)`"" }
+Write-Host "[ok] Python found: $($PY.Exe)" -ForegroundColor Green
 
 # --- 2. Git -------------------------------------------------------------------
 $git = Get-Command git -ErrorAction SilentlyContinue
@@ -94,4 +113,4 @@ if ($userPath -notlike "*$bin*") {
 Write-Host ""
 Write-Host "== Installation complete ==" -ForegroundColor Green
 Write-Host "Run:  tokenpfs     (after reopening the terminal)"
-Write-Host "  or: python `"$InstallDir\tokenpfs_app.py`""
+Write-Host "  or: $PYEXE `"$InstallDir\tokenpfs_app.py`""

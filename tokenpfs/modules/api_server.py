@@ -169,7 +169,7 @@ class ApiServer:
         return self._httpd is not None
 
     # ---------- request helpers used by the handler ----------
-    def auth(self, headers):
+    def auth(self, headers, count_rate=True):
         raw = ""
         a = headers.get("Authorization", "")
         if a.lower().startswith("bearer "):
@@ -183,7 +183,11 @@ class ApiServer:
             return None, "unknown api key", 401
         if not k.enabled:
             return None, "api key disabled", 401
-        if not k.check_rate():
+        # BUGFIX: rate limit must only apply to generation requests.
+        # GET /v1/models and GET /v1/history are metadata calls — counting
+        # them burned the rpm budget and made clients hit 429 before they
+        # could even see which models their key can use.
+        if count_rate and not k.check_rate():
             return None, f"rate limit exceeded ({k.rpm} req/min)", 429
         return k, None, 200
 
@@ -221,7 +225,7 @@ def _make_handler(app_ctx: ApiServer):
                 return self._json(200, {"ok": True,
                                         "app": app_ctx.app_name,
                                         "version": app_ctx.version})
-            key, err, code = app_ctx.auth(self.headers)
+            key, err, code = app_ctx.auth(self.headers, count_rate=False)
             if not key:
                 return self._json(code, {"error": err})
             if self.path.startswith("/v1/models"):

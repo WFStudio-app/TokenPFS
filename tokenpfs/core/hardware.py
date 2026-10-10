@@ -12,6 +12,7 @@ import os
 import platform
 import re
 import shutil
+import time
 
 IS_WINDOWS = platform.system() == "Windows"
 IS_MACOS = platform.system() == "Darwin"
@@ -29,16 +30,31 @@ def _load_avg():
     try:
         return os.getloadavg()[0]
     except (OSError, AttributeError):
-        # Windows has no getloadavg before Python 3.12; use CPU busy estimate
+        # Windows has no getloadavg; estimate CPU busy from os.times() deltas.
+        # BUGFIX: the previous version read nonexistent attributes
+        # (_last_user/_last_sys) off os.times(), so busy was always ~0 and
+        # load on Windows was permanently 0. Now we keep real module-level
+        # snapshots of (elapsed_wall, user+system time) between calls.
         if IS_WINDOWS:
+            global _LAST_TIMES
             try:
                 t = os.times()
-                busy = (t.user - getattr(t, "_last_user", t.user)) + \
-                       (t.system - getattr(t, "_last_sys", t.system))
-                return min(busy * 2.0, float(_cpu_count()))
+                now = time.monotonic()
+                cpu = (t.user + t.system + t.children_user + t.children_system)
+                if _LAST_TIMES is None:
+                    _LAST_TIMES = (now, cpu)
+                    return 0.0
+                dt = max(now - _LAST_TIMES[0], 1e-6)
+                dcpu = max(cpu - _LAST_TIMES[1], 0.0)
+                _LAST_TIMES = (now, cpu)
+                # busy cores over the interval, clamped to core count
+                return min(dcpu / dt, float(_cpu_count()))
             except Exception:
                 return 0.0
         return 0.0
+
+
+_LAST_TIMES = None
 
 
 def _mem_windows():
